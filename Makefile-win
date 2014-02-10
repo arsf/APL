@@ -1,0 +1,136 @@
+# VERSION NUMBER
+vers=3.0
+# Build type 32 or 64 (for windows versions)
+TOBUILD=32
+# contact email address to go into exe error messages
+email=arsf-processing@pml.ac.uk
+
+CPPFLAGS  =-Wall -O4 `pkg-config --cflags blitz` -D VERSION='"$(vers)"'  -D CONTACTEMAIL='"$(email)"' 
+# flag a windows build
+CPPFLAGS += -D _W32 
+# /usr/local/include/ is where the windows 64-bit install of proj is located
+# point to the location of the windows build of blitz++  - this will need to be updated to point to your copy of the library
+CPPFLAGS += -I windows_build_of_blitz/ -I /usr/local/include/
+#Large file support in 32-bit versions
+CPPFLAGS += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE 
+# To ensure only 64 bits of storage (rather than 80?)
+CPPFLAGS += -ffloat-store
+LDFLAGS=-static
+# don't actually need to link to blitz because we're only using the template functions defined in the .h files
+# LDFLAGS=$(LDFLAGS) `pkg-config --libs blitz`
+
+ifeq ($(TOBUILD),32)
+	# Compiler to use
+	CC=i686-w64-mingw32-g++
+	AR=i686-w64-mingw32-ar -rcs
+	# library linking flags
+   # Need to link to the 32-bit libproj dll file - this will need to be updated to point to your copy of the library
+	transform_ldflags=third_party_libs/libproj-0.dll 
+else ifeq ($(TOBUILD),64)
+	# Compiler to use
+	CC=x86_64-w64-mingw32-gcc
+	AR=x86_64-w64-mingw32-ar -rcs
+	# library linking flags
+   # Need to link to the 64-bit libproj dll file - this will need to be updated to point to your copy of the library
+	transform_ldflags=third_party_libs/libproj-0_64.dll 
+endif
+
+
+# Object file directory
+obj=objectfiles
+
+# source dir
+src=src
+
+# lib dir
+libs=libs
+
+# exe dir
+bin=bin
+
+# file to save dependencies to
+dependfile = .depend
+
+common_libs = $(libs)/libcommandline.a $(libs)/liblogger.a $(libs)/libbinaryreader.a
+
+# Make all the exes
+all: $(dependfile) aplcorr apltran aplmap aplmask
+
+# make individual exes
+# these ones have only been tested under linux - may not compile in windows
+aplcal:  $(bin)/aplcal.exe
+aplnav:  $(bin)/aplnav.exe
+aplshift: $(bin)/aplshift.exe
+#
+aplcorr: $(bin)/aplcorr.exe
+apltran: $(bin)/apltran.exe
+aplmap: $(bin)/aplmap.exe
+aplmask: $(bin)/aplmask.exe
+
+# make command line library
+$(libs)/libcommandline.a: $(obj)/commandline.o $(obj)/commonfunctions.o
+	rm -f $@
+	$(AR)  $@ $^
+
+# make logger library
+$(libs)/liblogger.a: $(obj)/logger.o $(obj)/commonfunctions.o
+	rm -f $@
+	$(AR)  $@ $^
+
+# make binary reader library
+$(libs)/libbinaryreader.a: $(obj)/binaryreader.o $(obj)/bil.o $(obj)/bsq.o $(obj)/binfile.o $(obj)/commonfunctions.o
+	rm -f $@
+	$(AR)  $@ $^ 
+
+#Note that on some systems you may need to replace "-lstdc++" with "-static-libstdc++ -static-libgcc"
+$(bin)/aplcal.exe: $(obj)/radcal.o $(obj)/sensor.o $(obj)/specimsensors.o $(obj)/calibration.o $(obj)/mainworker.o $(obj)/commonfunctions.o $(obj)/bilwriter.o $(obj)/os_dependant.o $(common_libs)
+	$(CC)  $(CPPFLAGS) -o $@ $^ -lstdc++ 
+
+$(bin)/aplnav.exe: $(obj)/navigation.o $(obj)/navfileclasses.o $(obj)/datahandler.o $(obj)/navigationsyncer.o $(obj)/navigationinterpolator.o $(obj)/interpolationfunctions.o $(obj)/leverbore.o $(obj)/transformations.o $(obj)/conversions.o $(obj)/commonfunctions.o $(obj)/bilwriter.o $(obj)/os_dependant.o $(common_libs)
+	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
+
+$(bin)/aplshift.exe: $(obj)/bilwriter.o $(obj)/navshift.o $(obj)/datahandler.o $(obj)/interpolationfunctions.o $(obj)/navbaseclass.o $(common_libs)
+	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
+
+$(bin)/aplcorr.exe: $(obj)/geolocation.o $(obj)/geodesics.o $(obj)/cartesianvector.o $(obj)/dems.o $(obj)/viewvectors.o $(obj)/navbaseclass.o $(obj)/conversions.o $(obj)/planarsurface.o $(obj)/transformations.o $(obj)/leverbore.o $(obj)/commonfunctions.o $(obj)/bilwriter.o  $(common_libs)
+	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
+
+$(bin)/apltran.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/transform.o $(common_libs)
+	$(CC) $(CPPFLAGS) $(LDFLAGS) $(transform_ldflags) -o $@ $^ -lstdc++
+
+$(bin)/aplmap.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o  $(obj)/level3grid.o $(obj)/basic_igm_worker.o $(obj)/map_main.o  $(obj)/TreeGrid.o $(obj)/treegrid_support.o $(obj)/os_dependant.o $(obj)/geodesics.o $(obj)/conversions.o $(common_libs)
+	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
+
+$(bin)/aplmask.exe: $(obj)/bilwriter.o $(obj)/applymask.o $(common_libs)
+	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
+
+clean: 
+	rm -f $(obj)/*.o 
+	rm -f $(dependfile) 
+
+cleanall: clean
+	rm -f $(libs)/*.a
+	rm -f $(bin)/* 
+
+depend: $(dependfile)
+
+# Get the dependencies for each cpp file and store in dependfile
+$(dependfile): $(src)/*.cpp
+	rm -f $(dependfile)
+
+	for fname in $(wildcard $(src)/*.cpp) ; do \
+		fnameo=`echo $$fname | sed 's/.cpp/.o/' | sed 's/$(src)\///'`;\
+		$(CC) -MM -MT $(obj)/$$fnameo $(CPPFLAGS) $$fname -MF $(dependfile) ; \
+   done
+
+# These are targets that dont actually exist after the build
+.PHONY: clean cleanall all depend 
+
+.SUFFIXES:.o .cpp
+
+# make the object file using the equivalent named cpp file and dependencies
+# $< means first dependency, $@ means file on the left of :
+$(obj)/%.o: $(src)/%.cpp 
+	$(CC) $(CPPFLAGS) -c $< -o $@
+
+-include $(dependfile) 

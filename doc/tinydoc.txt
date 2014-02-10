@@ -1,0 +1,21 @@
+Short description of what each executable is used for:
+
+aplcal: For calibration of hyperspectral data (geared for use with ARSF instrumentation)
+aplnav: For creation and synchronisation of an APL style navigation file from a SBET or SOL file.
+aplshift: To apply a shift to the APL navigation data if the raw data are unavailable
+aplmask: To apply the mask (output from aplcal) to the calibrated level 1 data (output from aplcal).
+aplcorr: To calculate a (longitude, latitude, height) for each level 1 pixel, using the navigation data, sensor view vectors and a Digital Elevation Model.
+apltran: To reproject the (longitude, latitude, height) data
+aplmap: To grid the level 1 data into a regular grid based on the (reprojected) lat,lon,hei data.
+
+Please Note that Windows versions of aplcal, aplnav and aplshift have not been extensively tested.
+For more information on the library please see the ARSF wiki: http://arsf-dan.nerc.ac.uk/trac/wiki/
+and in particular:
+http://arsf-dan.nerc.ac.uk/trac/wiki/Procedures/hyperspecprocessing
+http://arsf-dan.nerc.ac.uk/trac/wiki/Processing/AplUserGuide
+http://arsf-dan.nerc.ac.uk/trac/wiki/Processing/aplquickstart
+
+DEM slope and aspect algorithms based on algorithms discussed in:
+Horn, B. 1981, Hill Shading and the Reflectance Map, Proceedings of the IEEE, Vol. 69, No. 1.
+Srinivasan, R. and Engel, B.A. 1991, Effect of Slope Prediction Methods on Slope and Erosion Estimates,Applied Engineering in Agriculture, Vol. 7, No. 6.
+

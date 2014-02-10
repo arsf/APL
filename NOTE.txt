@@ -1,0 +1,1 @@
+navfileclasses.cpp navfileclasses.h have not been added as of yet. These contain the readers for various navigation file formats used within aplnav. These should be uploaded shortly. The upshot of this is that aplnav will NOT currently compile. 
