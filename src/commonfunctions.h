@@ -64,10 +64,10 @@ inline std::string ToString(double ival) {std::stringstream ss;  ss<<std::setpre
 std::string RemoveAllOf(std::string str,const char* chars);
 std::string ReplaceAllWith(const std::string* strtosearch, const char replace, const char sub);
 std::string ReplaceAllWith(const std::string* strtosearch, const std::string replace, const std::string sub);
-std::string RemoveAllBut(std::string str,const char* chars);
+std::string RemoveAllBut(std::string str,std::string char_string);
 std::string GetItemFromString(std::string str,const unsigned int itemnum);
 std::string GetItemFromString(std::string str,const unsigned int itemnum,const char delim);
-size_t GetNumberOfItemsFromString(std::string str,const char delim);
+size_t GetNumberOfItemsFromString(std::string str,std::string delim);
 
 //Function to convert a Time string HH mm ss.ss into a double second of day
 double ConvertTime(std::string timestr);

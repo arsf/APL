@@ -12,6 +12,7 @@
 #define TREEGRID_H
 
 #include <vector>
+#include <list>
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -256,6 +257,7 @@ protected:
    Ellipsoid* ellipse;
    double upperdateline,lowerdateline;
    bool islatlon;
+   void CheckSearchBoxForWraps(std::list<Area> &search_areas);
 };
 
 
@@ -622,6 +624,7 @@ public:
    void InsertData(std::vector<unsigned int> dropscanvector,Area* region);
    std::string GetMapInfo();
    void GetAveragePixelSeparation(double &x,double &y);
+   void GetAveragePixelSeparationMetres(double &x,double &y);
 private:
    Basic_IGM_Worker* igm;
    double pixsepX,pixsepY;

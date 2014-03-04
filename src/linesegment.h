@@ -44,37 +44,45 @@ private:
 template <class T>
 LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap_lines,double psx,double psy,std::string bandlist,std::string igmfilename,std::string level1filename,const Area* const region=NULL)
 {
+   //May as well set all to NULL although shouldn't matter.
+   segmentinfo=NULL;
+   outline=NULL;
+   igm=NULL;
+   level1=NULL;
+   igmblock=NULL;
+   level1block=NULL;
+
    //firstrow=fr;
    //endrow=er; // note this is one after the last row
-   unsigned int nlines=er-fr;
-   unsigned int nbandsl1=GetNumberOfItemsFromString(bandlist,' ');
+   uint64_t nlines=er-fr;
+   unsigned int nbandsl1=static_cast<unsigned int>(GetNumberOfItemsFromString(bandlist," "));
 
    Logger::Verbose("Constructing LineSegment starting and ending at rows: "+ToString(fr)+" "+ToString(er)+" using filename: "+igmfilename);
 
    //Create an IGM worker and read in the required section of the IGM file
    Basic_IGM_Worker igmr(igmfilename);
-   unsigned nsamples=igmr.Samples();
+   unsigned int nsamples=igmr.Samples();
 
    //The overlap region is to allow a buffer of IGM data (and level 1 data) to be kept in RAM
    //to speed up searches near the start/end of the line segments. The Block data cover this
    //area but the level3grid and outline use only the data without the overlap buffer. 
 
    //variables for use with overlapped region
-   unsigned int first_line=0;
-   unsigned int end_line=0;
-   unsigned int igmblock_start_of_segment=0;
+   uint64_t first_line=0;
+   uint64_t end_line=0;
+   //unsigned int igmblock_start_of_segment=0;
 
    //If we can apply the overlap lines to the start of the segment then do so
    //having to cast as signed else wraps to very large number - could maybe improve test instead
    if((signed)fr - (signed)overlap_lines >= 0)
    {
       first_line=fr-overlap_lines;
-      igmblock_start_of_segment=2*nsamples*overlap_lines;      
+      //igmblock_start_of_segment=2*nsamples*overlap_lines;      
    }
    else //else just use the original bounds
    {
       first_line=fr;
-      igmblock_start_of_segment=0;    
+      //igmblock_start_of_segment=0;    
    }
 
    //If we can apply the overlap lines to the end of the segment then do so
@@ -90,7 +98,7 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
    Logger::Debug("Using first_line and end_line of: "+ToString(first_line)+" "+ToString(end_line));
 
    //Update the number of lines to include the overlap region
-   unsigned int nlines_with_overlap=end_line - first_line;
+   uint64_t nlines_with_overlap=end_line - first_line;
 
    Logger::Verbose("Creating IGM block of size (bytes): "+ToString(nsamples*nlines_with_overlap*2*sizeof(double)));
    igmblock=new double[nsamples*nlines_with_overlap*2]; //2 bands
@@ -100,7 +108,7 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
    double tmaxx=0,tminx=0,tmaxy=0,tminy=0;
    
    //Firstly read in all the data including the overlaps
-   for(unsigned int i=0;i<nlines_with_overlap;i++)
+   for(uint64_t i=0;i<nlines_with_overlap;i++)
    {
       //Read in X for line i
       igmr.fin->Readbandline((char*)&(igmblock[2*i*nsamples]),0,first_line+i);
@@ -111,7 +119,7 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
 
    //Then calculate min/max only using the non-overlap data
    //non-overlap data either starts at 0 or 2*overlap_lines*nsamples into the igmblock
-   for(unsigned int i=(fr-first_line);i<nlines+(fr-first_line);i++)
+   for(uint64_t i=(fr-first_line);i<nlines+(fr-first_line);i++)
    {
       //Calculate the min/max X values of all the data being read in
       GetArrayLimits(&(igmblock[2*i*nsamples]),nsamples,tminx,tmaxx,igmr.IgnoreValue());
@@ -152,8 +160,15 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
    outline=new Level3Outline(segmentinfo,igm,nlines,abs(first_line-fr),igmr.IgnoreValue());
 
    //Read in the level1 data
-   Logger::Verbose("Creating line segment level1 block of size (bytes): "+ToString(sizeof(T)*nsamples*nlines_with_overlap*nbandsl1));
-   level1block=new T[nsamples*nlines_with_overlap*nbandsl1];
+   Logger::Verbose("Creating line segment level1 block of size (bytes): "+ToString(sizeof(T)*(nsamples*nlines_with_overlap*nbandsl1)));
+   try
+   {
+      level1block=new T[nsamples*nlines_with_overlap*nbandsl1];
+   }
+   catch(std::bad_alloc) //only catch std::bad_alloc here - leave it for further up try/catch chain if other errors occur
+   {
+      throw "Trying to allocate more RAM than system will allow - please use -buffersize to set a smaller amount (in MB) to use. Default is 1024MB. Note that 32-bit applications can not address more than 3GB of RAM even if your system has more avaiable.";
+   }
 
    //----------------------------------------------------------------------
    // Check the level 1 and IGM file have the same number of lines
@@ -162,7 +177,7 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
    if(igmr.Lines() != StringToUINT(lev1.FromHeader("lines")))
       throw "Number of lines in level 1 file does not agree with number of lines in IGM file. Are you sure these are for the same flight line?";      
 
-   for(unsigned int i=0;i<nlines_with_overlap;i++)
+   for(uint64_t i=0;i<nlines_with_overlap;i++)
    {
       for(unsigned int b=0;b<nbandsl1;b++)
       {
@@ -172,6 +187,7 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
 
    //Set the level1 block up
    level1=new Block<T>(level1block,nlines_with_overlap,nsamples,nbandsl1,first_line,end_line);
+   lev1.Close();
 }
 
 

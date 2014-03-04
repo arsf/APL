@@ -50,7 +50,7 @@ Level3GridInfo::Level3GridInfo(double minX, double minY, double maxX, double max
    nrows=(unsigned int)ceil(fabs(tlY-minY)/pixelsizeY)+1;
    ncols=(unsigned int)ceil(fabs(maxX-tlX)/pixelsizeX)+1;
 
-   nbands=GetNumberOfItemsFromString(strBandList,' ');
+   nbands=GetNumberOfItemsFromString(strBandList," ");
    bands=new unsigned int[nbands];   
    std::string b;
    unsigned int bi=0;
@@ -233,13 +233,20 @@ Level3Outline::Level3Outline(Level3GridInfo* const gi,std::string igmfilename)
    {
       std::vector<IGMPoint> edges;
       //Read in the edge points (X,Y) from the IGM file and store in the edges vector
-      ReadEdges(&igm,&edges);
-      //Iterate through this edge vector and convert points from X,Y into Row,Col of
-      //the level 3 grid. If required, fill in any holes in the outline edges. Also
-      //add the lines in that reflect the edge at the start and end of IGM (i.e. first
-      //and last rows of the IGM)
-      //Initialise(edges);
-      InitialiseForScanlineFill(edges);
+      if(!ReadEdges(&igm,&edges))
+      {
+         //Something has gone wrong - just use every pixel by faking the edges
+         FakeEdges();
+      }
+      else
+      {
+         //Iterate through this edge vector and convert points from X,Y into Row,Col of
+         //the level 3 grid. If required, fill in any holes in the outline edges. Also
+         //add the lines in that reflect the edge at the start and end of IGM (i.e. first
+         //and last rows of the IGM)
+         //Initialise(edges);
+         InitialiseForScanlineFill(edges);
+      }
    }
 }
 
@@ -261,22 +268,50 @@ Level3Outline::Level3Outline(Level3GridInfo* const gi,Block<double>* igmblock,un
    }
    else
    {
+      //Make a dataaccessor object - then we can use same functions 
+      //for both outlines created by (a) igm files and (b) data blocks
       std::vector<IGMPoint> edges;
       unsigned int bandlist[2]={0,1}; //we only need read bands 0 and 1 of the igm file
+      //Create a data accessor object based on the block of data - igm filename is null
       DataAccessor<double> data(igmblock,"",bandlist);
-      unsigned int line=igmblock->FirstRow()+start_line_offset;
+      //Get the IGM index for the first line of data in the block discarding any overlap region if present 
+      //(e.g. block line (0+overlap) is line index X in IGM)
+      unsigned int firstlineofdata=igmblock->FirstRow()+start_line_offset;
+      //Increment counter for loop
       unsigned int lineinc=0;
+      //For each line of the block - add the swath edge points to the 'edge' array
       while(lineinc<nlines)
       {
-         AddPointToEdgeArray(&data, ignoreval,edges,line+lineinc,igmblock->Samples());
+         if(!AddPairToEdgeArray(&data,ignoreval,edges,firstlineofdata+lineinc,igmblock->Samples()))
+         {
+            break;
+         }
          lineinc++;
       }
-      //Iterate through this edge vector and convert points from X,Y into Row,Col of
-      //the level 3 grid. If required, fill in any holes in the outline edges. Also
-      //add the lines in that reflect the edge at the start and end of IGM (i.e. first
-      //and last rows of the IGM)
-      //Initialise(edges);
-      InitialiseForScanlineFill(edges);
+      if(lineinc!=nlines)
+      {
+         //Something has gone wrong - just use every pixel by faking the edges
+         FakeEdges();
+      }
+      else
+      {
+
+         //Now add the top/bottom edges
+         if(!AddTopBottomToEdgeArray(&data,ignoreval,edges,firstlineofdata,nlines,igmblock->Samples()))
+         {
+            //Something has gone wrong - just use every pixel by faking the edges
+            FakeEdges();
+         }
+         else
+         {
+            //Iterate through this edge vector and convert points from X,Y into Row,Col of
+            //the level 3 grid. If required, fill in any holes in the outline edges. Also
+            //add the lines in that reflect the edge at the start and end of IGM (i.e. first
+            //and last rows of the IGM)
+            //Initialise(edges);
+            InitialiseForScanlineFill(edges);
+         }
+      }
    }
 }
 
@@ -297,63 +332,78 @@ inline int Level3Outline::ConvertXYtoRC(IGMPoint* igmp,L3Point* l3p)
    return 0;
 }
 
-void Level3Outline::AddPointToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int line,unsigned int numsamples)
+//------------------------------------------------------------------------
+// Add a point to the edge array
+//------------------------------------------------------------------------
+bool Level3Outline::AddPointToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int line,unsigned int sample)
 {
    IGMPoint p(0,0);
 
    //Read the near edge values from the IGM and assign to point
-   p.X=(data->GetData(0,line,0));
-   p.Y=(data->GetData(1,line,0));
+   p.X=(data->GetData(0,line,sample));
+   p.Y=(data->GetData(1,line,sample));
 
    //Add the point if not to be ignored
    if((p.X != ignoreval)&&(p.Y != ignoreval))
+   {
       edges.push_back(p); 
+   }
    else
    {
-      unsigned int samplenumber=1;
-      while(((p.X == ignoreval)||(p.Y == ignoreval))&&(samplenumber<numsamples))
-      {
-         p.X=(data->GetData(0,line,samplenumber));
-         p.Y=(data->GetData(1,line,samplenumber));
-         samplenumber++;
-      }
-      if(samplenumber!=numsamples)
-         edges.push_back(p); 
+      return false;
    }
+   return true;
+}
 
-   //Read the far edge values from the IGM and assign to point
-   p.X=data->GetData(0,line,numsamples-1);
-   p.Y=data->GetData(1,line,numsamples-1);
-   //Add the point if not to be ignored
-   if((p.X != ignoreval)&&(p.Y != ignoreval))
-      edges.push_back(p); 
-   else
+//------------------------------------------------------------------------
+// Add a pair of points (nearside and farside) to the edge array
+//------------------------------------------------------------------------
+bool Level3Outline::AddPairToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int line,unsigned int nsamples)
+{
+   //Add the near-side point
+   if(!AddPointToEdgeArray(data, ignoreval,edges,line,0))
+      return false;
+   //Add the far-side point
+   if(!AddPointToEdgeArray(data, ignoreval,edges,line,nsamples-1))
+      return false;
+   return true;
+}
+
+//------------------------------------------------------------------------
+// Add the top/bottom (i.e. across swath direction) edges
+//------------------------------------------------------------------------
+bool Level3Outline::AddTopBottomToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int firstlineofdata,unsigned int nlines,unsigned int nsamples)
+{
+   for(unsigned int sample=0;sample<nsamples;sample++)
    {
-      //Need to add a fake point? or loop through all the cells in row until find one that is OK?
-      int samplenumber=numsamples-2;
-      while(((p.X == ignoreval)||(p.Y == ignoreval))&&(samplenumber>=0))
-      {
-         p.X=(data->GetData(0,line,samplenumber));
-         p.Y=(data->GetData(1,line,samplenumber));
-         samplenumber--;
-      }
-      if(samplenumber!=-1)
-         edges.push_back(p); 
+      //Add the top-side point
+      if(!AddPointToEdgeArray(data, ignoreval,edges,firstlineofdata,sample))
+         return false;
+      //Add the bottom-side point
+      if(!AddPointToEdgeArray(data, ignoreval,edges,firstlineofdata+nlines-1,sample))
+         return false;      
    }
+   return true;
 }
 
 //------------------------------------------------------------------------
 // Read in the edges from the IGM file and store in the edge array
 //------------------------------------------------------------------------
-void Level3Outline::ReadEdges(Basic_IGM_Worker* igm,std::vector<IGMPoint>* edges)
+bool Level3Outline::ReadEdges(Basic_IGM_Worker* igm,std::vector<IGMPoint>* edges)
 {
    unsigned int bandlist[2]={0,1}; //we only need read bands 0 and 1 of the igm file
    DataAccessor<double> data(NULL,igm->FileName(),bandlist);
+   //Add the port/starboard edges
    for(unsigned int line=0;line<igm->Lines();line++)
    {
-      AddPointToEdgeArray(&data, igm->IgnoreValue(),*edges,line,igm->Samples());
+      if(!AddPairToEdgeArray(&data,igm->IgnoreValue(),*edges,line,igm->Samples()))
+         return false;
    }
+   //Now add the top/bottom edges
+   if(!AddTopBottomToEdgeArray(&data,igm->IgnoreValue(),*edges,0,igm->Lines(),igm->Samples()))
+      return false;
 
+   return true;
 }
 
 //------------------------------------------------------------------------

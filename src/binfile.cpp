@@ -20,6 +20,7 @@ BinFile::BinFile(std::string filename)
    br=NULL;
    br=new BinaryReader(filename);
    BinaryReader::interleavetype ft=br->GetFileStyle();
+
    delete br;
    br=NULL;
 

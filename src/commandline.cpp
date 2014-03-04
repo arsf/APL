@@ -420,7 +420,7 @@ std::string CommandLine::ProgramUsage(const int number_of_possible_options,const
       buffer<<" | ";
       chartowrite=optsdescription[o].length();
       size_t startchar=0,spacebreak=0;
-      while(chartowrite>linemax)
+      while(chartowrite>(unsigned)linemax)
       {
          spacebreak=optsdescription[o].substr(startchar,linemax-1).rfind(' ');
          for(size_t c=0;c<spacebreak;c++)

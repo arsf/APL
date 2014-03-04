@@ -66,7 +66,6 @@ BILWriter::BILWriter(std::string fname,unsigned int dsize)
          throw BILexception("BIL output file failed to open: "+filename);         
       }
    }
-
 }
 
 //constructor to open file using method cmethod ('a' - append, 'w' -overwrite)                                                      
@@ -179,9 +178,7 @@ BILWriter::BILWriter(std::string fname, const unsigned int dtype,const unsigned 
 //Destructor 
 BILWriter::~BILWriter()
 {
-   //DEBUG output
    DEBUGPRINT("Entering BILWriter destructor...");
-
    this->Close();
 }
 
@@ -232,18 +229,6 @@ int BILWriter::WriteHeader()
    return 1;
 }
 
-//Function to write out blank (zeroed) data
-//int BILWriter::WriteLineZeroes()
-//{  
-//   char* zdata=new char[this->numbands*this->numsamples*this->datasize]; //create array of zero data of size of 1 line for all bands
-//   for(unsigned int i=0;i<this->numbands*this->numsamples*this->datasize;i++)
-//      zdata[i]=0;
-//   int retval=WriteLineSection(zdata,this->numsamples,0,numsamples-1);
-//   delete[] zdata; //delte array
-//   zdata=NULL;
-//   return retval;
-//}
-
 //write out data with constant value over the line
 int BILWriter::WriteLineWithValue(const char xval)
 {
@@ -251,6 +236,17 @@ int BILWriter::WriteLineWithValue(const char xval)
    for(unsigned int i=0;i<this->numbands*this->numsamples*this->datasize;i++)
       zdata[i]=xval;
    int retval=WriteLineSection(zdata,this->numsamples,0,numsamples-1);
+   delete[] zdata; //delte array
+   zdata=NULL;
+   return retval;
+}
+
+int BILWriter::WriteBandLineWithValue(const char xval,const unsigned int band)
+{
+   char* zdata=new char[this->numsamples*this->datasize]; //create array of data of size of 1 line for all bands
+   for(unsigned int i=0;i<this->numsamples*this->datasize;i++)
+      zdata[i]=xval;
+   int retval=WriteBandLineSection(zdata,this->numsamples,0,numsamples-1,band);
    delete[] zdata; //delte array
    zdata=NULL;
    return retval;
@@ -293,56 +289,7 @@ int BILWriter::WriteBandLine(char* const data)
    return 1;
 }
 
-//Function to write a line of data of all bands to the BIL file
-//return +ve means it has written the data, -ve a problem occurred
-//int BILWriter::WriteLine(const char* data)
-//{
-//   DEBUGPRINT("trying to write a line of data...");
-//   //Check nsamps is known
-//   if(this->numsamples==0)
-//   {
-//      //Cannot out a line of data if we dont know its size
-//      this->bilinfo<<"Number of samples is unknown so cannot write out a line of data."<<std::endl;
-//      return -1;      
-//   }     
-//   //Check nbands is known
-//   if(this->numbands==0)
-//   {
-//      //Cannot out a line of data for all bands if we dont know its size
-//      this->bilinfo<<"Number of bands is unknown so cannot write out a line of data."<<std::endl;
-//      return -1;      
-//   } 
-//   //Check datasize is known
-//   if(this->datasize==0)
-//   {
-//      //Cannot output a line if we dont know what bytesize to use (e.g. 1btye data, 4 byte data etc)
-//      this->bilinfo<<"Size of data to output is unknown so cannot output a line of data."<<std::endl;
-//      return -1;
-//   }   
-//   //Check file is open
-//   if(!this->fileout.is_open())
-//   {
-//      //File is not open for some reason
-//      this->bilinfo<<"The BIL file is closed. Cannot output a line of data."<<std::endl;
-//      return -1;
-//   }
-//
-//   //Lets try and write the data
-//   this->fileout.write(const_cast<char*>(data),numsamples*datasize*numbands);
-//   if(this->fileout.bad())
-//   {
-//      this->bilinfo<<"A problem has occurred writing the line of data to file: "<<this->filename<<std::endl;
-//      return -1;   
-//   }
-//   return 1;
-//}
-
-//Function to write a section of line of data of all bands to the BIL file
-//return +ve means it has written the data, -ve a problem occurred
-//start and end are the cells to start outputting from and to end the output
-//eg 0,n-1 outputs the full line
-//  50,150 outputs 101 cells of data, from (and including) cell 50 to cell 150
-int BILWriter::WriteLineSection(char* const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end)
+int BILWriter::WriteBandLineSection(char* const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end,const unsigned int band)
 {
    DEBUGPRINT("trying to write a section of a line of data...");
 
@@ -388,15 +335,31 @@ int BILWriter::WriteLineSection(char* const data,const unsigned int numsamples_a
       return -1;
    }
 
-   DEBUGPRINT("Start: "<<start<<" End: "<<end<<" datasize "<<datasize<<" numsamplesarray "<<numsamples_array);
+   //Lets try and write the data
+   //Write out the x bytes for each line of each band using the same starting pixel
+   //need cell (i*numsamples_array + start)*datasize because each iteration we need to skip 'i' bands, and then move to the first cell to output
+   //which is 'start' cells along. But data is in chars so need to multiply by datasize to get to right point
+   this->fileout.write((&data[start*datasize]),(end - start +1)*datasize);
+
+   if(this->fileout.bad())
+   {
+      this->bilinfo<<"A problem has occurred writing the line of data to file: "<<this->filename<<std::endl;
+      return -1;   
+   }
+   return 1;
+}
+
+//Function to write a section of line of data of all bands to the BIL file
+//return +ve means it has written the data, -ve a problem occurred
+//start and end are the cells to start outputting from and to end the output
+//eg 0,n-1 outputs the full line
+//  50,150 outputs 101 cells of data, from (and including) cell 50 to cell 150
+int BILWriter::WriteLineSection(char* const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end)
+{
    //Lets try and write the data
    for(unsigned int b=0;b<numbands;b++)
    { 
-      DEBUGPRINT("Writing from sample..."<<b*numsamples_array + start<<" for "<<(end - start +1)*datasize<<"bytes.");
-      //Write out the x bytes for each line of each band using the same starting pixel
-      //need cell (i*numsamples_array + start)*datasize because each iteration we need to skip 'i' bands, and then move to the first cell to output
-      //which is 'start' cells along. But data is in chars so need to multiply by datasize to get to right point
-      this->fileout.write((&data[(b*numsamples_array + start)*datasize]),(end - start +1)*datasize);
+      WriteBandLineSection(&data[b*numsamples_array*datasize],numsamples_array, start, end, b);
    }
 
    if(this->fileout.bad())

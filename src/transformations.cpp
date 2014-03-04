@@ -61,6 +61,7 @@ void GetVVinECEFXYZ(blitz::TinyMatrix<double,3,1>* const V,double ECEFXYZ[3],con
 
 //----------------------------------------------------------------------------
 // Function to transform the vector V from aircraft coords into ECEF XYZ reference frame
+// Note that that variable names have swapped compared to those that call this function :(
 //----------------------------------------------------------------------------
 void GetVVinECEFXYZ(blitz::TinyMatrix<double,3,1>* const V,double ECEFXYZ[3],const double lat, const double lon,
                      const double theta,const double phi,const double kappa,const double roll,const double pitch,const double heading)

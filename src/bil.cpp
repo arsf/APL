@@ -230,7 +230,7 @@ int BILReader::Readbandline(char* const chdata, unsigned int band, unsigned int 
       brinfo<<"Readbandline function has failed because 'file stream is not good.'"<<std::endl;   
       brinfo<<"Further information for debugging: FERROR value: "<<this->Ferror()<<" FEOF: "<<this->Feof()<<std::endl;   
       brinfo<<"File in question: "<<this->filename<<std::endl;    
-      brinfo<<strerror(errno)<<std::endl;
+      brinfo<<"Errno says: "<<strerror(errno)<<std::endl;
       throw BRexception(brinfo.str());
    }
 
@@ -242,8 +242,6 @@ int BILReader::Readbandline(char* const chdata, unsigned int band, unsigned int 
    uint64_t pos=(this->numsamples * this->datasize * this->numbands) * line  + (this->numsamples * this->datasize * band);
 
    //Move the file pointer to this position
-   //this->filein.seekg(pos,std::ios::beg);
-   //SeekInFileForWindows(pos);
    FileSeek(filein,pos,SEEK_SET);
 
    if(this->CheckCapacity(nbytestoread))
@@ -253,6 +251,7 @@ int BILReader::Readbandline(char* const chdata, unsigned int band, unsigned int 
       brinfo<<"Attempted to read "<<nbytestoread<<" but file reports there are less bytes remaining to be read."<<std::endl;   
       throw BRexception(brinfo.str());
    }
+
    return 1;
 }
 
@@ -271,7 +270,7 @@ double BILReader::ReadCell(const unsigned int band,const unsigned int line, cons
 
    if((line>numrows)||(col>numsamples))
    {
-      brinfo<<"ReadCell has failed...row/col out of bounds."<<std::endl;   
+      brinfo<<"ReadCell has failed...row/col out of bounds: row: "<<line<<" col: "<<col<<std::endl;   
       throw BRexception(brinfo.str());      
    }
 
@@ -280,7 +279,6 @@ double BILReader::ReadCell(const unsigned int band,const unsigned int line, cons
    //Create a char array of the size of one cell
    char* cbuffer=new char[this->datasize];
    //Seek to and read that cell of data
-   //this->filein.seekg(nbytestoskip,std::ios::beg);;
    FileSeek(filein,nbytestoskip,SEEK_SET);
 
    fread(cbuffer,this->datasize,1,filein);
@@ -295,62 +293,11 @@ void BILReader::ReadlineToDoubles(double* const ddata,unsigned int line)
 {
    char* chtmp=new char[this->numsamples*this->numbands* this->datasize];
    Readlines(chtmp,line,1);
-
    for(unsigned int sample=0;sample<this->numsamples*this->numbands;sample++)
    {
-      //The following switch statement allows the data in chtmp to be derefenced
-      //to many types, allowing different data formats in the BIL to be used 
-      switch(this->datatype)
-      {
-      case 1: //8-bit
-         {
-            char* cderef=(char*)(chtmp);      
-            ddata[sample]=static_cast<double>(cderef[sample]);
-            break;   
-         }
-      case 2: //16 bit signed short int
-         {
-            short int* sideref=(short int*)(chtmp);      
-            ddata[sample]=static_cast<double>(sideref[sample]);
-            break;
-         }
-      case 3: //32 bit signed short int
-         {
-            int* ideref=(int*)(chtmp);      
-            ddata[sample]=static_cast<double>(ideref[sample]);
-            break;
-         }
-      case 4: //float
-         {
-            float* fderef=(float*)(chtmp);
-            ddata[sample]=static_cast<double>(fderef[sample]);
-            break;
-         }
-      case 5: //double
-         {
-            double* dderef=(double*)(chtmp);
-            ddata[sample]=static_cast<double>(dderef[sample]);
-            break;
-         }
-      case 12: //16 bit unsigned short int
-         {
-            unsigned short int* usideref=(unsigned short int*)(chtmp);
-            ddata[sample]=static_cast<double>(usideref[sample]);
-            break;
-         }
-      case 13: //32 bit unsigned int
-         {
-            unsigned int* uideref=(unsigned int*)(chtmp);
-            ddata[sample]=static_cast<double>(uideref[sample]);
-            break;
-         }
-      default:
-         throw "Unrecognised data type for BIL file. Currently supports 8-bit, signed and unsigned 16-bit and 32-bit integer, 32-bit and 64-bit float";
-         break;
-      }
+
+      ddata[sample]=DerefToDouble(&chtmp[sample*datasize]);
    }   
-
-
    delete[] chtmp;
 }
 

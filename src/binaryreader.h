@@ -25,13 +25,13 @@
 //The reading functions are overloaded in the bilreader and bsqreader classes.
 //Note this is not actually abstract - can create a instance of it but only to tell you the filestyle (bsq/bil) - no reading methods and header destroyed.
 
-#ifdef _W32
+//#ifdef _W32
    #define FileSeek(X,Y,Z) fseeko64(X,Y,Z);
    #define FileTell(X) ftello64(X);
-#else
-   #define FileSeek(X,Y,Z) fseeko(X,Y,Z);
-   #define FileTell(X) ftello(X);
-#endif
+//#else
+//   #define FileSeek(X,Y,Z) fseeko(X,Y,Z);
+//   #define FileTell(X) ftello(X);
+//#endif
 
 
 class BinaryReader
@@ -42,17 +42,21 @@ public:
    
    virtual ~BinaryReader();//destructor
 
-   std::string FromHeader(std::string key) //Search the map for the string key and return  the string item. (Return a string from the map)
+   std::string FromHeader(std::string key,std::string THROW="false") //Search the map for the string key and return  the string item. (Return a string from the map)
    {
       std::map<std::string,std::string>::iterator it;
       it=this->Header.find(ToLowerCase(key));
       if(it!=this->Header.end())
          return it->second;
       else
+      {
+         if(THROW.compare("true")==0)
+            throw "Trying to read a key from hdr which does not exist: "+key;
          return "";
+      }
    }       
 
-   std::string FromHeader(std::string key,int itemnum); //Search the map for the string key and return the itemnum variable on the string. (for multiple objects)
+   std::string FromHeader(std::string key,int itemnum,std::string THROW="false"); //Search the map for the string key and return the itemnum variable on the string. (for multiple objects)
    unsigned int GetDataSize() const {return datasize;}
    unsigned int GetDataType() const {return datatype;}
 
@@ -101,10 +105,10 @@ public:
    std::map<std::string, std::string, cmpstr> CopyHeader()const{return Header;}
    //Function to return the filename
    std::string GetHeaderFilename(){return hdrfilename;}
-
-
+   std::string MissingHeaderItemError()const{return missingheaderitemerror;}
+   std::string GetFileName() const {return filename;}
 protected:
-
+   std::string missingheaderitemerror;
    interleavetype FILESTYLE;
 
    FILE* filein;

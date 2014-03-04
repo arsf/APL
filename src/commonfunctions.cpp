@@ -84,11 +84,9 @@ std::string TrimLeadingChars(std::string str,const char* chars)
    return str;
 }
 
-
 //This function will remove all occurrences of chars in str
-std::string RemoveAllBut(std::string str,const char* chars)
+std::string RemoveAllBut(std::string str,std::string char_string)
 {
-   std::string char_string(chars);
    size_t index=str.find_first_not_of(char_string); //find first non-chars char
    while(index!=std::string::npos)
    {
@@ -409,11 +407,10 @@ void FillTimeStruct(tm* this_time,std::string datestr)
 }
 
 
-
-size_t GetNumberOfItemsFromString(std::string str,const char delim)
+size_t GetNumberOfItemsFromString(std::string str,std::string delim)
 {
    //Remove everything but the delimiter
-   std::string temp=RemoveAllBut(str,&delim);
+   std::string temp=RemoveAllBut(str,delim);
    //Count the delimiters and add 1 since e.g. "a" has no spaces in,"a b" has 1 space etc
    return temp.length()+1;
 }

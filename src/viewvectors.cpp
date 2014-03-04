@@ -66,8 +66,15 @@ ViewVectors::ViewVectors(std::string fname,std::string lev1fname)
       throw "Spatial binning is missing from the level-1 file header. Please add a line in the header file containing: binning = VALUE where VALUE is the correct spatial and spectral binning of the data in the form, e.g., {1,1}";
 
    lev1.Close();
+
+   //If the view vectors file is binned spatially we need to handle it 
+   //If the ratio of binning is less than 1 then exit and request a vv file that is not binned (as much)
+   unsigned int binscale=(spatbin/this->spatialbin);
+   if(binscale<=0)
+      throw "Spatial binning of view vectors is greater than binning of level-1 data. Use a view vector file with spatial binning equal (or lower) to that of level-1 file.";
+   
    //The binned vector row size
-   unsigned int newsizerows=((ccdrows)/spatbin);
+   unsigned int newsizerows=((ccdrows)/binscale);
 
    //Temporary arrays to fill with binned vvs
    double* tmpX=new double[newsizerows*ccdcols];
@@ -82,17 +89,17 @@ ViewVectors::ViewVectors(std::string fname,std::string lev1fname)
          tmpX[c*newsizerows + p]=0;
          tmpY[c*newsizerows + p]=0;
          tmpZ[c*newsizerows + p]=0;
-         for(unsigned int b=0;b<spatbin;b++)
+         for(unsigned int b=0;b<binscale;b++)
          {
             //Add on the pixels for this bin
-            tmpX[c*newsizerows + p]+=rotX[c*ccdrows+spatbin*p+b];
-            tmpY[c*newsizerows + p]+=rotY[c*ccdrows+spatbin*p+b];
-            tmpZ[c*newsizerows + p]+=rotZ[c*ccdrows+spatbin*p+b];
+            tmpX[c*newsizerows + p]+=rotX[c*ccdrows+binscale*p+b];
+            tmpY[c*newsizerows + p]+=rotY[c*ccdrows+binscale*p+b];
+            tmpZ[c*newsizerows + p]+=rotZ[c*ccdrows+binscale*p+b];
          }
          //Average the value in the bin
-         tmpX[c*newsizerows + p]=tmpX[c*newsizerows + p]/spatbin;
-         tmpY[c*newsizerows + p]=tmpY[c*newsizerows + p]/spatbin;
-         tmpZ[c*newsizerows + p]=tmpZ[c*newsizerows + p]/spatbin;
+         tmpX[c*newsizerows + p]=tmpX[c*newsizerows + p]/binscale;
+         tmpY[c*newsizerows + p]=tmpY[c*newsizerows + p]/binscale;
+         tmpZ[c*newsizerows + p]=tmpZ[c*newsizerows + p]/binscale;
       }
    }
    //Now we need to trim these and assign to the rotX,rotY,rotZ vars
@@ -192,6 +199,11 @@ int ViewVectors::ReadVVFile()
    //Read in the information into the arrays if they have been defined
    if((this->rotX==NULL)||(this->rotY==NULL)||(this->rotZ==NULL))
       throw "Cannot read view vector file - rotX,Y,Z arrays not defined";
+
+   //Get the spatial binning value from the header (if it exists - if not assume binning 1)
+   this->spatialbin=StringToUINT(this->binf->FromHeader("spatial binning"));
+   if(this->spatialbin==0)
+      this->spatialbin=1;
 
    //read in every line for each band in turn
    this->binf->Readband((char*)this->rotX,0);

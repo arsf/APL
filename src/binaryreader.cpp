@@ -23,6 +23,8 @@ BinaryReader::BinaryReader() //constructor
 
 BinaryReader::BinaryReader(std::string fname)//constructor with filename - only to return the filetype (BIL or BSQ)
 {
+   //Assign error string
+   missingheaderitemerror="Trying to read a key from hdr which does not exist: ";
    //Asssign filename
    this->filename=fname;
    //Want to open bsq file, read in hdr file, and assign all the class variables
@@ -297,7 +299,7 @@ void BinaryReader::DatasizeFromDatatype()
 
 
 // Function now converts the passed key to lower case to search the header
-std::string BinaryReader::FromHeader(std::string key,int itemnum)
+std::string BinaryReader::FromHeader(std::string key,int itemnum,std::string THROW)
 {
    //DEBUG statement
    DEBUGPRINT("Retrieving item "<<itemnum<<" from value relating to key "<<key);
@@ -308,7 +310,11 @@ std::string BinaryReader::FromHeader(std::string key,int itemnum)
    //Find the value from the map
    it=this->Header.find(ToLowerCase(key));
    if(it==this->Header.end()) //if the key doesnt exist return an empty string
+   {
+      if(THROW.compare("true")==0)
+         throw missingheaderitemerror+key;
       return "";
+   }
    else //else continue and get the related value to the key
       str=it->second;
 
@@ -380,7 +386,7 @@ void BinaryReader::Close()
       DEBUGPRINT("Closing BILReader...");
       clearerr(filein);
       if(fclose(filein)==0)
-         filein=NULL; 
+         filein=NULL;   
    }   
 }
 
@@ -425,29 +431,31 @@ double BinaryReader::DerefToDouble(char* cbuffer)
       throw "Attempt to convert NULL to double in DerefToDouble().";      
    }
 
+   //The following switch statement allows the data in chtmp to be derefenced
+   //to many types, allowing different data formats in the BIL to be used 
    switch(this->GetDataType())
    {
    case 1: //8-bit
       cp=(char*)(cbuffer);      
-      return (double)(*cp);
+      return static_cast<double>(*cp);
    case 2: //16 bit signed int
-      sip=(short int*)(cbuffer);      
-      return (double)(*sip);
+      sip=reinterpret_cast<short int*>(cbuffer);      
+      return static_cast<double>(*sip);
    case 3:
-      ip=(int*)(cbuffer);
-      return (double)(*ip);
+      ip=reinterpret_cast<int*>(cbuffer);
+      return static_cast<double>(*ip);
    case 4: //float
-      fp=(float*)(cbuffer);
-      return (double)(*fp);
+      fp=reinterpret_cast<float*>(cbuffer);
+      return static_cast<double>(*fp);
    case 5: //double
-      dp=(double*)(cbuffer);
+      dp=reinterpret_cast<double*>(cbuffer);
       return (*dp);
    case 12: //16 bit unsigned short int
-      usip=(unsigned short int*)(cbuffer);
-      return (double)(*usip);
+      usip=reinterpret_cast<unsigned short int*>(cbuffer);
+      return static_cast<double>(*usip);
    case 13: //32 bit unsigned int
-      uip=(unsigned int*)(cbuffer);
-      return (double)(*uip);
+      uip=reinterpret_cast<unsigned int*>(cbuffer);
+      return static_cast<double>(*uip);
    default:
       throw "Unrecognised data type. Currently supports 8-bit, both signed and unsigned 16 & 32-bit integer, and 32 & 64-bit float";
       break;

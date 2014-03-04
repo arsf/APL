@@ -76,7 +76,7 @@ private:
 
    //Handle the input nav data
    SpecimFileChooser* navfile;
-
+   float NOSYNCINHDR;
    //scan line times
    double* time;
 

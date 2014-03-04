@@ -961,7 +961,7 @@ void Calibration::ReadQCFailureFile(std::string qcfailurefile)
          //Trim whitespace to remove any errors due to this
          tempstr=TrimWhitespace(tempstr);
          //check that are 2 items on the line (band,sample)
-         if(GetNumberOfItemsFromString(tempstr,' ')!=2)
+         if(GetNumberOfItemsFromString(tempstr," ")!=2)
          {
             throw "An error occured whilst reading the qc failure pixel file - format of file should be ASCII: space separated band sample per line, I got: " + tempstr;           
          }

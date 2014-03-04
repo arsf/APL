@@ -400,7 +400,7 @@ IGMTreeGrid::IGMTreeGrid(std::string fname,std::vector<unsigned int> dropscanvec
       Logger::Log("Using a geographic data set - that is in latitude/longitude.");
       //Projection is geographic lat/lon
       //Get the ellipsoid used
-      if(e.compare("WGS-84")==0)
+      if((e.compare("WGS-84")==0)||(e.compare("WGS84")==0))
       {
          //WGS84
          ellipse=new Ellipsoid(WGS84);
@@ -493,21 +493,21 @@ IGMTreeGrid::IGMTreeGrid(std::string fname,std::vector<unsigned int> dropscanvec
    {
       double radttlx=floor(ttlx)*PI/180;
       double radtbrx=ceil(tbrx)*PI/180;
-      if((sin(radttlx)==sin(radtbrx))&&(cos(radttlx)==cos(radtbrx)))
+      if((sin(radttlx)==sin(radtbrx))&&(cos(radttlx)==cos(radtbrx)))//FIXME:this should probably be +/- epsilon rather than equals
       {
-         upperdateline=floor(ttlx);
-         lowerdateline=ceil(tbrx);
+         upperdateline=ceil(tbrx);
+         lowerdateline=floor(ttlx);
       }
       else
       {
-         //Just assign to -9999
-         upperdateline=-9999;
-         lowerdateline=-9999;
+         //Just assign to -9999 (no dateline?)
+         upperdateline=ceil(tbrx);
+         lowerdateline=floor(ttlx);
       }
    }
    else
    {
-      //Just assign to -9999
+      //Just assign to -9999 - they should not be used anywhere
       upperdateline=-9999;
       lowerdateline=-9999;
    }
@@ -530,10 +530,40 @@ IGMTreeGrid::~IGMTreeGrid()
       delete ellipse;
 }
 
+//------------------------------------------------------------------------
+// Function to return (in place) the average pixel separation
+//------------------------------------------------------------------------
 void IGMTreeGrid::GetAveragePixelSeparation(double &x,double &y)
 {
    x=pixsepX;
    y=pixsepY;   
+}
+
+//------------------------------------------------------------------------
+// Function to return (in place) the average pixel separation in 
+// (assumed) metres
+//------------------------------------------------------------------------
+void IGMTreeGrid::GetAveragePixelSeparationMetres(double &x,double &y)
+{
+   if (this->IsGeographic())
+   {
+      //Need to convert pixsep (degrees) in to metres
+      double xdistance,xazimuth,xzenith=0;
+      double ydistance,yazimuth,yzenith=0;
+      //pick a point nearby the data
+      double lon=TopLeftX();
+      double lat=TopLeftY();
+      GetGeodesicDistance_Bowring(lon*PI/180.0,lat*PI/180.0,0,(lon+pixsepX)*PI/180.0,lat*PI/180.0,0,xdistance,xazimuth,xzenith,this->ellipse);
+      GetGeodesicDistance_Bowring(lon*PI/180.0,lat*PI/180.0,0,lon*PI/180.0,(lat+pixsepY)*PI/180.0,0,ydistance,yazimuth,yzenith,this->ellipse);
+      x=xdistance;
+      y=ydistance;
+   }
+   else
+   {
+      //Assume pixsep already in metres
+      x=pixsepX;
+      y=pixsepY;   
+   }
 }
 
 //------------------------------------------------------------------------
@@ -619,6 +649,7 @@ bool TreeGrid::GetAllCollectionsWithinRadius(std::vector<Collection*>* colls,con
 {
    //Identify the collection to search (containing searchX,searchY)
    unsigned long int r=0,c=0;
+   std::list<Area> search_areas;
    r=static_cast<unsigned long int>(floor((topLeftY-searchpoint->Y)/sizeY));
    c=static_cast<unsigned long int>(floor((searchpoint->X-topLeftX)/sizeX));
 
@@ -636,10 +667,9 @@ bool TreeGrid::GetAllCollectionsWithinRadius(std::vector<Collection*>* colls,con
    colls->push_back(collection[r][c]); 
 
    //Create an area the size of the search radius centred on searchX,searchY
-   Area* search_box=NULL;  
    if(ellipse==NULL)
    {
-      search_box=new Area(searchpoint->X-searchradius,searchpoint->X+searchradius,searchpoint->Y-searchradius,searchpoint->Y+searchradius);  
+      search_areas.push_back(Area(searchpoint->X-searchradius,searchpoint->X+searchradius,searchpoint->Y-searchradius,searchpoint->Y+searchradius));  
    }
    else
    {
@@ -654,60 +684,184 @@ bool TreeGrid::GetAllCollectionsWithinRadius(std::vector<Collection*>* colls,con
       //get a destination lat,lon in a pure y direction (remember azimuth is in radians)
       GetDestinationPoint_Bowring(searchpoint->X*PI/180,searchpoint->Y*PI/180,searchradius,0,destlon,destlat,ellipse);
       search_ydegrees=fabs(destlat-searchpoint->Y);
-      search_box=new Area(searchpoint->X-search_xdegrees,searchpoint->X+search_xdegrees,searchpoint->Y-search_ydegrees,searchpoint->Y+search_ydegrees);  
+      search_areas.push_back(Area(searchpoint->X-search_xdegrees,searchpoint->X+search_xdegrees,searchpoint->Y-search_ydegrees,searchpoint->Y+search_ydegrees));  
+      //Check for wrap arounds at poles and dateline
+      CheckSearchBoxForWraps(search_areas);
    }
 
    //Find which collections intersect with the search box and test those 
    bool intersection=true;
    int offset=0;
 
-   while(intersection == true)
+   //Loop through all the search areas (usually only 1 but may be more if wraps at poles/dateline)
+   for(std::list<Area>::iterator area=search_areas.begin();area!=search_areas.end();area++)
    {
-      offset++; //increase the offset to search the greater rectangle around the previous one
-      intersection=false;
-
-      //Search rows above and below
-      for(long i=(long)(c-offset);i<=(long)(c+offset);i++)
+      while(intersection == true)
       {
-         if((i<0)||(i>=(long)cols))
-            continue;
+         offset++; //increase the offset to search the greater rectangle around the previous one
+         intersection=false;
 
-         //row above
-         if((r-offset>=0)&&(r-offset<rows)&&(collection[r-offset][i]->Intersect(search_box)))
+         //Search rows above and below
+         for(long i=(long)(c-offset);i<=(long)(c+offset);i++)
          {
-            colls->push_back((collection[r-offset][i]));   
-            intersection=true;
-         }
-         //row below
-         if((r+offset>=0)&&(r+offset<rows)&&(collection[r+offset][i]->Intersect(search_box)))
-         {
-            colls->push_back((collection[r+offset][i]));  
-            intersection=true;
-         }
-      }
-      
-      //Search columns to the left and right
-      for(long i=(long)(r-(offset-1));i<=(long)(r+(offset-1));i++)
-      {
-         if((i<0)||(i>=(long)rows))
-            continue;
+            if((i<0)||(i>=(long)cols))
+               continue;
 
-         //col left
-         if((c-offset>=0)&&(c-offset<cols)&&(collection[i][c-offset]->Intersect(search_box)))
-         {
-            colls->push_back((collection[i][c-offset]));   
-            intersection=true;
+            //row above
+            if((r-offset>=0)&&(r-offset<rows)&&(collection[r-offset][i]->Intersect(&(*area))))
+            {
+               colls->push_back((collection[r-offset][i]));   
+               intersection=true;
+            }
+            //row below
+            if((r+offset>=0)&&(r+offset<rows)&&(collection[r+offset][i]->Intersect(&(*area))))
+            {
+               colls->push_back((collection[r+offset][i]));  
+               intersection=true;
+            }
          }
-         //col right
-         if((c+offset>=0)&&(c+offset<cols)&&(collection[i][c+offset]->Intersect(search_box)))
+         
+         //Search columns to the left and right
+         for(long i=(long)(r-(offset-1));i<=(long)(r+(offset-1));i++)
          {
-            colls->push_back((collection[i][c+offset]));   
-            intersection=true;
+            if((i<0)||(i>=(long)rows))
+               continue;
+
+            //col left
+            if((c-offset>=0)&&(c-offset<cols)&&(collection[i][c-offset]->Intersect(&(*area))))
+            {
+               colls->push_back((collection[i][c-offset]));   
+               intersection=true;
+            }
+            //col right
+            if((c+offset>=0)&&(c+offset<cols)&&(collection[i][c+offset]->Intersect(&(*area))))
+            {
+               colls->push_back((collection[i][c+offset]));   
+               intersection=true;
+            }
          }
       }
    }
    //TODO FIXME If geographic we also need to check against dateline and poles for wrapping and check the relevant collections
 
-   delete search_box;
    return true;
+}
+
+//-------------------------------------------------------------------------
+// Function to check the given Area for wrap arounds at poles and dateline
+// If it is found to be the case then creates multiple Areas to cover the
+// wrap arounds, in place with the search_box pointer. 
+// Returns the number of Areas that search_box points to.
+//-------------------------------------------------------------------------
+void TreeGrid::CheckSearchBoxForWraps(std::list<Area> &search_areas)
+{
+   std::list<Area>::iterator it=search_areas.begin();
+   std::list<Area>::iterator end=search_areas.end();
+
+   //Only one search box assumed to be passed
+   if((*it).MaxY()>90)
+   {
+      //Means we wrap over the North pole - so split into 2 Areas:
+      //  latitudes will be search_box->MinY() and 90 for one search_boxes
+      //  latitudes will be 180-search_box->MaxY() and 90 for other
+      //  longitudes will be search_box->MinX() and MaxX() for one
+      //  longitudes will be search_box->MinX()+180 and MaxX()+180 (modupper/lowerdateline) for other
+      //UNLESS
+      //  longitudes cross dateline too
+      //OR
+      //  longitude ranges from -180/180 (or anything else) rather than 0/360
+      //SO
+      //  Check if longitudes are > upperdateline or < lowerdateline and if they are
+      //  we then need to wrap around dateline too
+      //  These can be taken care of in the later if statements if we run over each area as they're created
+      //Also increase numareas    
+      //std::cout<<"Must search over North Pole"<<std::endl;
+      if((*it).MinY()>90)
+      {
+         search_areas.push_back(Area((*it).MinX()+180,(*it).MaxX()+180,180-(*it).MaxY(),180-(*it).MinY()));
+      }
+      else
+      {      
+         //Split the area over the pole and add to the back of the list
+         search_areas.push_back(Area((*it).MinX(),(*it).MaxX(),(*it).MinY(),90));
+         search_areas.push_back(Area((*it).MinX()+180,(*it).MaxX()+180,180-(*it).MaxY(),90));
+         //delete the original area that has now been split
+      }
+      search_areas.erase(it);
+   }
+
+   it=search_areas.begin();
+   end=search_areas.end();
+   //For each area (in case the above 'if' creates a new one then we have more than 1 to check) - iterate in list
+   while(it!=end)
+   {
+      if((*it).MinY()<-90)
+      {
+         //std::cout<<"Must search over South Pole"<<std::endl;
+         if((*it).MaxY()<-90)
+         {
+            search_areas.push_back(Area((*it).MinX()+180,(*it).MaxX()+180,-(180+(*it).MaxY()),-(180+(*it).MinY())));
+         }
+         else
+         {  
+            //Split the area over the pole and add to the back of the list
+            search_areas.push_back(Area((*it).MinX(),(*it).MaxX(),-90,(*it).MaxY()));
+            search_areas.push_back(Area((*it).MinX()+180,(*it).MaxX()+180,-90,-((*it).MinY()+180)));
+            //delete the original area that has now been split
+         }
+         it=search_areas.erase(it);
+      }
+      else
+         it++;
+   }
+
+   //For each area (in case the above 'if' creates a new one then we have more than 1 to check)   
+   it=search_areas.begin();
+   end=search_areas.end();
+   while(it!=end)
+   {
+      if((*it).MaxX()>upperdateline)
+      {
+         //std::cout<<"Must search over positive dateline: "<<upperdateline<<std::endl;
+         if((*it).MinX()>upperdateline)
+         {
+            search_areas.push_back(Area((*it).MinX()-360,(*it).MaxX()-360,(*it).MinY(),(*it).MaxY()));
+         }
+         else
+         {
+            search_areas.push_back(Area((*it).MinX(),upperdateline,(*it).MinY(),(*it).MaxY()));
+            search_areas.push_back(Area(lowerdateline,(*it).MaxX()-360,(*it).MinY(),(*it).MaxY()));
+         }
+         it=search_areas.erase(it);
+      }
+      else
+         it++;
+   }
+
+   //For each area (in case the above 'if' creates a new one then we have more than 1 to check)
+   it=search_areas.begin();
+   end=search_areas.end();
+   while(it!=end)
+   {
+      if((*it).MinX()<lowerdateline)
+      {
+         //std::cout<<"Must search over negative dateline: "<<lowerdateline<<std::endl;
+         if((*it).MaxX()<lowerdateline)
+         {
+            search_areas.push_back(Area((*it).MinX()+360,(*it).MaxX()+360,(*it).MinY(),(*it).MaxY()));
+         }
+         else
+         {
+            search_areas.push_back(Area(lowerdateline,(*it).MaxX(),(*it).MinY(),(*it).MaxY()));
+            search_areas.push_back(Area((*it).MinX()+360,upperdateline,(*it).MinY(),(*it).MaxY()));
+         }
+         it=search_areas.erase(it);
+      }
+      else
+         it++;
+   }
+//      for(std::list<Area>::iterator it=search_areas.begin();it!=search_areas.end();it++)
+//      {  
+//         std::cout<<(*it).MinX()<<" "<< (*it).MaxX()<<" "<< (*it).MinY()<<" "<< (*it).MaxY()<<" "<< std::endl;
+//      }
 }

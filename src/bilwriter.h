@@ -53,6 +53,7 @@ public:
       }
    }
 
+   int WriteBandLineSection(char* const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end,const unsigned int band);
    //Function to write a line from given start point to end point.
    //i.e. write a section of a line (for all bands) from an array of a larger size - also need the number_of_samples of the data array
    //since these may be different (WILL BE) to output number of samples
@@ -61,6 +62,7 @@ public:
    //int WriteLineSection(const char* data,unsigned int start, unsigned int end); 
 
    int WriteLineWithValue(const char xval); //write out data with constant value over the line
+   int WriteBandLineWithValue(const char xval,const unsigned int band); //write out data with constant value over the line
 
    int Close(); //Close the file, output the hdr information, check nrows/samples/bands agree with written filesize and call the destructor
 
@@ -93,8 +95,9 @@ public:
    unsigned int GetDataType() const {return datatype;}
 
    //numsamples_array = in terms of if array = [s*b*l] then numsamples_array=s NOT s*b*l
+   //Data is an array of only 1 line for 1 band length
    template<class T>
-   void WriteDataToLineSection(T const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end)
+   void WriteDataToBandLineSection(T const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end,const unsigned int band)
    {
       unsigned char* cp=NULL;
       unsigned short* usp=NULL;
@@ -106,71 +109,79 @@ public:
       switch(datatype)
       {
       case 1:
-         cp=new unsigned char[numsamples_array*numbands];
-         for(unsigned int i=0;i<numsamples_array*numbands;i++)
+         cp=new unsigned char[numsamples_array];
+         for(unsigned int i=0;i<numsamples_array;i++)
          {
             cp[i]=static_cast<unsigned char>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteLineSection((char*)cp,numsamples_array,start,end);
+         WriteBandLineSection((char*)cp,numsamples_array,start,end,band);
          delete[] cp;
          break;
       case 2:
-         sp=new short[numsamples_array*numbands];
-         for(unsigned int i=0;i<numsamples_array*numbands;i++)
+         sp=new short[numsamples_array];
+         for(unsigned int i=0;i<numsamples_array;i++)
          {
             sp[i]=static_cast<short>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteLineSection((char*)sp,numsamples_array,start,end);
+         WriteBandLineSection((char*)sp,numsamples_array,start,end,band);
          delete[] sp;
          break;
       case 3:
-         ip=new int[numsamples_array*numbands];
-         for(unsigned int i=0;i<numsamples_array*numbands;i++)
+         ip=new int[numsamples_array];
+         for(unsigned int i=0;i<numsamples_array;i++)
          {
             ip[i]=static_cast<int>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteLineSection((char*)ip,numsamples_array,start,end);
+         WriteBandLineSection((char*)ip,numsamples_array,start,end,band);
          delete[] ip;
          break;
       case 4:
-         fp=new float[numsamples_array*numbands];
-         for(unsigned int i=0;i<numsamples_array*numbands;i++)
+         fp=new float[numsamples_array];
+         for(unsigned int i=0;i<numsamples_array;i++)
          {
             fp[i]=static_cast<float>(data[i]);
          }
-         WriteLineSection((char*)fp,numsamples_array,start,end);
+         WriteBandLineSection((char*)fp,numsamples_array,start,end,band);
          delete[] fp;
          break;
       case 5:
-         dp=new double[numsamples_array*numbands];
-         for(unsigned int i=0;i<numsamples_array*numbands;i++)
+         dp=new double[numsamples_array];
+         for(unsigned int i=0;i<numsamples_array;i++)
          {
             dp[i]=static_cast<double>(data[i]);
          }
-         WriteLineSection((char*)dp,numsamples_array,start,end);
+         WriteBandLineSection((char*)dp,numsamples_array,start,end,band);
          delete[] dp;
          break;
       case 12:
-         usp=new unsigned short[numsamples_array*numbands];
-         for(unsigned int i=0;i<numsamples_array*numbands;i++)
+         usp=new unsigned short[numsamples_array];
+         for(unsigned int i=0;i<numsamples_array;i++)
          {
             usp[i]=static_cast<unsigned short>(data[i]+0.5); // add on 0.5 to round to nearest
          }
-         WriteLineSection((char*)usp,numsamples_array,start,end);
+         WriteBandLineSection((char*)usp,numsamples_array,start,end,band);
          delete[] usp;
          break;
       case 13:
-         uip=new unsigned int[numsamples_array*numbands];
-         for(unsigned int i=0;i<numsamples_array*numbands;i++)
+         uip=new unsigned int[numsamples_array];
+         for(unsigned int i=0;i<numsamples_array;i++)
          {
             uip[i]=static_cast<unsigned int>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteLineSection((char*)uip,numsamples_array,start,end);
+         WriteBandLineSection((char*)uip,numsamples_array,start,end,band);
          delete[] uip;
          break;
       default:
          break;
       }
+   }
+
+   //Data is an array of only 1 line for all bands length
+   template<class T>
+   void WriteDataToLineSection(T const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end)
+   {
+      for(unsigned int b=0;b<numbands;b++)
+         WriteDataToBandLineSection(&data[numsamples_array*b],numsamples_array,start,end,b);
    }
 
 private:

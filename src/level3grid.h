@@ -179,11 +179,13 @@ private:
    void InitialiseForScanlineFill(std::vector<IGMPoint> edges);
    //function to convert the XY to row col
    inline int ConvertXYtoRC(IGMPoint*,L3Point*);
-   void ReadEdges(Basic_IGM_Worker* igm,std::vector<IGMPoint>* edges);
+   bool ReadEdges(Basic_IGM_Worker* igm,std::vector<IGMPoint>* edges);
    //void Initialise(std::vector<IGMPoint> edges);
    bool firstcalltogetintersects;
    void FakeEdges();
-   void AddPointToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int line,unsigned int numsamples);
+   bool AddPointToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int line,unsigned int sample);
+   bool AddPairToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int line,unsigned int nsamples);
+   bool AddTopBottomToEdgeArray(DataAccessor<double>* data, double ignoreval,std::vector<IGMPoint> &edges,unsigned int firstlineofdata,unsigned int nlines,unsigned int nsamples);
 };
 
 #endif

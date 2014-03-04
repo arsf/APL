@@ -700,9 +700,23 @@ int main(int argc,char* argv[])
       PercentProgress(line,nlines);
 
    }
+
    //Add the projection information to the IGM file
-   bw->AddToHdr("projection = "+strOutProjection+" "+strUTMZone+" "+strHemisphere);
-   bw->AddToHdr("datum ellipsoid = "+strOutEllipsoid);
+   if((pj_is_latlong(proj_out))&&(proj_out_2nd==NULL))
+   {
+      bw->AddToHdr("projection = Geographic Lat/Lon");
+      std::string projdef=std::string(pj_get_def(proj_out,0));
+      std::string ellipsesearchterm="+ellps=";
+      std::string projdefafterellps=projdef.substr(projdef.find(ellipsesearchterm)+ellipsesearchterm.length());
+      std::string strEllps=GetItemFromString(projdefafterellps,0);
+      bw->AddToHdr("datum ellipsoid = "+strEllps);
+   }
+   else
+   {
+      bw->AddToHdr("projection = "+strOutProjection+" "+strUTMZone+" "+strHemisphere);
+      bw->AddToHdr("datum ellipsoid = "+strOutEllipsoid);
+   }
+
    if(proj_out_2nd!=NULL)
    {
       bw->AddToHdr("proj4 projection string 1 = "+std::string(pj_get_def(proj_out,0)));
@@ -749,6 +763,9 @@ int main(int argc,char* argv[])
    delete[] X;
    delete[] Y;
    delete[] Z;
+
+   pj_free(proj_in);
+   pj_free(proj_out);
 
 }
 

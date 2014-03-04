@@ -872,7 +872,7 @@ void Hawk::DecodeARSFBadPixels(std::map<int,int> revbandmap)
       //so loop through each method in string "method" and set all that apply
       char meth='z';
       badpixelmethod[id]=0;
-      for(size_t m=0;m<GetNumberOfItemsFromString(method,',');m++)
+      for(size_t m=0;m<GetNumberOfItemsFromString(method,",");m++)
       {
          std::string strItem=GetItemFromString(method,m,',').c_str();
          if(strItem.length() > 1)

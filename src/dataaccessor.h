@@ -12,6 +12,7 @@
 #define  DATAACCESSOR_H
 
 #include "binfile.h"
+#include "logger.h"
 //#include "linesegment.h"
 
 //-------------------------------------------------------------------------

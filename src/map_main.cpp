@@ -806,7 +806,7 @@ int main(int argc, char* argv[])
 
          strBandList.clear();//clear original band list
          //update the number of bands to map
-         nbtomap=GetNumberOfItemsFromString(TrimWhitespace(tmpBandList),' ');
+         nbtomap=GetNumberOfItemsFromString(TrimWhitespace(tmpBandList)," ");
 
          unsigned int ba=0;
          BinFile tmp(strLev1File); 
@@ -932,7 +932,7 @@ int main(int argc, char* argv[])
          map=new Map<uint16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint16_t>(nodata_value));
          break; 
       case 13://32-bit unsigned int data
-         map=new Map<uint32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename),static_cast<uint32_t>(nodata_value);
+         map=new Map<uint32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint32_t>(nodata_value));
          break; 
       default:
          throw "Unrecognised data type in level 1 file. Cannot create a map of this data type. Got: "+ToString(intype);
@@ -1021,7 +1021,7 @@ int main(int argc, char* argv[])
       {
          //Use a value of three nadir pixel separation - this is 0.6* because SizeX/Y are 5* single separation
          double xsep=0,ysep=0;
-         tg->GetAveragePixelSeparation(xsep,ysep);
+         tg->GetAveragePixelSeparationMetres(xsep,ysep);
          maxinterpdist=3*sqrt(xsep*xsep+ysep*ysep);
          //maxinterpdist=0.6*sqrt(tg->SizeX()*tg->SizeX() + tg->SizeY()*tg->SizeY());
          Logger::Log("Will use a default value for maximum interpolation of three times the average separation of a nadir pixel. This is: "+ToString(maxinterpdist));
