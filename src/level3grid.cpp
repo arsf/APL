@@ -459,6 +459,7 @@ inline void Level3Outline::CreateEdge(L3Point* p1,L3Point* p2)
 //------------------------------------------------------------------------
 void Level3Outline::FakeEdges()
 {
+   Logger::Debug("Faking edges...");
    for(unsigned int row=0;row<info->NumRows()-1;row++)
    {
       L3Point p1(row,0);
@@ -605,12 +606,14 @@ void Level3Outline::GetEdgeIntersectsOfRow(int row,std::vector<int> &intersects)
    it=edgetable.end();
    if((*(it-1)).maxY < row)
    {
+      Logger::Debug("Call to get edge intersects of row past last row in edgetable: "+ToString(row));
       return;
    }
    //Check if row is before first row in edgetable
    it=edgetable.begin();
    if((*it).minY > row)
    {
+      Logger::Debug("Call to get edge intersects of row before first row in edgetable: "+ToString(row));
       return;
    }   
 
