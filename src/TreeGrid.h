@@ -271,78 +271,23 @@ std::vector<Item>* TreeGrid::GetNearestXItems(unsigned int num,IGMPoint* searchp
    //Identify the collection to search
    unsigned long int r=0,c=0,size=0;
    std::vector<Item>::iterator iter;
+   std::vector<Item>* retvec=NULL;   
    r=static_cast<unsigned long int>(floor((topLeftY-searchpoint->Y)/sizeY));
    c=static_cast<unsigned long int>(floor((searchpoint->X-topLeftX)/sizeX));
-
-   if((r>=rows)||(c>=cols))
-   {
-      //This collection does not exist
-      return NULL;
-   }
-
    //Clear retItems - the vector that a pointer to is returned
    retItems.clear();
 
-   //Search the collection
-   std::vector<Item>* retvec=NULL;
-   if(collection[r][c]->GetSize()!=0)
+   //Check that the colection in which the search point lies exists (the search point may be outside the treegrid)
+   if((r>=rows)||(c>=cols))
    {
-      //The collection contains some data - lets search it
-      retvec=collection[r][c]->GetNearestXItems(num,searchpoint,level1,band,IGNOREVALUE);
-      //Insert the found items into the return vector
-      iter=retItems.begin();
-      retItems.insert(iter,retvec->begin(),retvec->end());
-      size=retItems.size();
-   }
-   else
-      size=0;
-
-   //We need to check we have num items before we return - so if we have less
-   //we need to check surrounding containers too
-   if(size==num)
-   {
-      //We should now check that furthest point is closer to the search point
-      //than the edges of the collection - if not we need to search these neighbouring
-      //collections too
-      //Get the furthest Item
-      Item furthest=retItems.back();
-      //Get all collections within furthest distance (note sqrt because distance is squared)
-      std::vector<Collection*> colls;
-
-      if((!GetAllCollectionsWithinRadius(&colls,searchpoint,sqrt(furthest.distance))) || (colls.size()==0)) //there are no intersects
-      {
-         std::sort(retItems.begin(),retItems.end());
-         return &retItems;
-      }
-      else
-      {  
-         //Collections were found with potentially nearer points
-         std::vector<Collection*>::iterator it;
-         //Iterate through the collections and get the nearest n points from each one
-         //Then before returning - order them and remove the last (total - n) points
-         //The first element of colls is the collection we have just searched so skip it
-         for(it=colls.begin()+1;it<colls.end();it++)
-         {
-            retvec=(*it)->GetNearestXItems(num,searchpoint,level1,band,IGNOREVALUE);
-            iter=retItems.begin();
-            retItems.insert(iter,retvec->begin(),retvec->end());
-            size=retItems.size();
-         }
-      }
-      //Clear the colls vector
-      colls.clear();
-   }
-   else
-   {
-      //Haven't found enough nearby points yet so search
-      //neighbouring collections 
+      //This collection does not exist - but that does not mean we shouldn't search to see if any do exist within
+      //the search radius of the search point
       std::vector<Item>* retvec_additional=NULL;
-      //Get all collections within search radius
       std::vector<Collection*> colls;
-      GetAllCollectionsWithinRadius(&colls,searchpoint,searchradius);
-      //we've already searched first collectoin so point to second collection 
       std::vector<Collection*>::iterator coll_it;
-      coll_it=colls.begin()+1;
+      //Get all collections within search radius
+      GetAllCollectionsWithinRadius(&colls,searchpoint,searchradius);
+      coll_it=colls.begin();
 
       while((coll_it<colls.end())) //This will search all collections - could be made better if you know you have searched all nearest ones
       {
@@ -358,7 +303,85 @@ std::vector<Item>* TreeGrid::GetNearestXItems(unsigned int num,IGMPoint* searchp
          //Point to next collection
          coll_it++;
       }
-   }  
+   }
+   else
+   {
+      //Search the current collection, as it does exist, if it is not empty
+      if(collection[r][c]->GetSize()!=0)
+      {
+         //The collection contains some data - lets search it
+         retvec=collection[r][c]->GetNearestXItems(num,searchpoint,level1,band,IGNOREVALUE);
+         //Insert the found items into the return vector
+         iter=retItems.begin();
+         retItems.insert(iter,retvec->begin(),retvec->end());
+         size=retItems.size();
+      }
+      else //it is empty - so we have no items as of yet
+         size=0;
+
+      //We need to check we have num items before we return - so if we have less
+      //we need to check surrounding containers too
+      if(size==num)
+      {
+         //We should now check that furthest point is closer to the search point
+         //than the edges of the collection - if not we need to search these neighbouring
+         //collections too
+         //Get the furthest Item
+         Item furthest=retItems.back();
+         //Get all collections within furthest distance (note sqrt because distance is squared)
+         std::vector<Collection*> colls;
+
+         if((!GetAllCollectionsWithinRadius(&colls,searchpoint,sqrt(furthest.distance))) || (colls.size()==0)) //there are no intersects
+         {
+            std::sort(retItems.begin(),retItems.end());
+            return &retItems;
+         }
+         else
+         {  
+            //Collections were found with potentially nearer points
+            std::vector<Collection*>::iterator it;
+            //Iterate through the collections and get the nearest n points from each one
+            //Then before returning - order them and remove the last (total - n) points
+            //The first element of colls is the collection we have just searched so skip it
+            for(it=colls.begin()+1;it<colls.end();it++)
+            {
+               retvec=(*it)->GetNearestXItems(num,searchpoint,level1,band,IGNOREVALUE);
+               iter=retItems.begin();
+               retItems.insert(iter,retvec->begin(),retvec->end());
+               size=retItems.size();
+            }
+         }
+         //Clear the colls vector
+         colls.clear();
+      }
+      else
+      {
+         //Haven't found enough nearby points yet so search
+         //neighbouring collections 
+         std::vector<Item>* retvec_additional=NULL;
+         //Get all collections within search radius
+         std::vector<Collection*> colls;
+         GetAllCollectionsWithinRadius(&colls,searchpoint,searchradius);
+         std::vector<Collection*>::iterator coll_it;
+         //we've already searched first collection so point to second collection 
+         coll_it=colls.begin()+1;
+
+         while((coll_it<colls.end())) //This will search all collections - could be made better if you know you have searched all nearest ones
+         {
+            if((*coll_it)->GetSize()!=0)
+            {
+               retvec_additional=(*coll_it)->GetNearestXItems(num,searchpoint,level1,band,IGNOREVALUE);     
+               //Now insert these new values into retItems
+               iter=retItems.begin();
+               retItems.insert(iter,retvec_additional->begin(),retvec_additional->end());
+               //update size variable
+               size=retItems.size();            
+            }
+            //Point to next collection
+            coll_it++;
+         }
+      }  
+   }
 
    //Sort the vector to get in order
    std::sort(retItems.begin(),retItems.end());

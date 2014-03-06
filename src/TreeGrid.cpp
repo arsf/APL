@@ -452,12 +452,12 @@ IGMTreeGrid::IGMTreeGrid(std::string fname,std::vector<unsigned int> dropscanvec
 
    //If using the IGM file (i.e. region = NULL) then we need to use
    //the min/max of the IGM with an extra buffer so that the min/max points
-   //are included inside this region. Defining the buffer as a small fraction 
-   //of the X/Y TreeGrid cell size
-   double ttlx=igm->MinX();//-sX/20.0;
-   double ttly=igm->MaxY();//+sY/20.0;
-   double tbrx=igm->MaxX();//+sX/20.0;
-   double tbry=igm->MinY();//-sY/20.0;
+   //are included inside this region. Defining the buffer as the next available
+   //representable number by the double data type
+   double ttlx=nextafter(igm->MinX(),-1.0);
+   double ttly=nextafter(igm->MaxY(),1.0);
+   double tbrx=nextafter(igm->MaxX(),1.0);
+   double tbry=nextafter(igm->MinY(),-1.0);
 
    if(region==NULL)
    {
@@ -653,18 +653,20 @@ bool TreeGrid::GetAllCollectionsWithinRadius(std::vector<Collection*>* colls,con
    r=static_cast<unsigned long int>(floor((topLeftY-searchpoint->Y)/sizeY));
    c=static_cast<unsigned long int>(floor((searchpoint->X-topLeftX)/sizeX));
 
+   //Clear the vector of collections
+   colls->clear();
+
    if((r>=rows)||(c>=cols))
    {
       //This collection does not exist
       Logger::Debug("Collection does not exist at row,col: "+ToString(r)+" "+ToString(c));
-      return false;
+      //But others in the region may so still check for those
    }
-
-   //Clear the vector of collections
-   colls->clear();
-
-   //Add this collection to the list
-   colls->push_back(collection[r][c]); 
+   else
+   {
+      //Add this collection to the list
+      colls->push_back(collection[r][c]); 
+   }
 
    //Create an area the size of the search radius centred on searchX,searchY
    if(ellipse==NULL)

@@ -167,12 +167,6 @@ void Basic_IGM_Worker::GetMinMax()
          miny=tminy;
    }
 
-   //Round up  / down so that all data lies within these bounds (not on the bounds)
-   minx=floor(minx);
-   maxx=ceil(maxx);
-   miny=floor(miny);
-   maxy=ceil(maxy);  
-
    Logger::Debug("GetMinMax: MinX:"+ToString(minx)+" MaxX: "+ToString(maxx)+" MinY: "+ToString(miny)+" MaxY: "+ToString(maxy));
    delete[] databuffer;
 }
