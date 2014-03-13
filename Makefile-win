@@ -1,11 +1,11 @@
 # VERSION NUMBER
-vers=3.0
+vers=3.1.4.1
 # Build type 32 or 64 (for windows versions)
 TOBUILD=32
 # contact email address to go into exe error messages
 email=arsf-processing@pml.ac.uk
 
-CPPFLAGS  =-Wall -O4 `pkg-config --cflags blitz` -D VERSION='"$(vers)"'  -D CONTACTEMAIL='"$(email)"' 
+CPPFLAGS  =-Wall -O4 -D VERSION='"$(vers)"'  -D CONTACTEMAIL='"$(email)"' 
 # flag a windows build
 CPPFLAGS += -D _W32 
 # /usr/local/include/ is where the windows 64-bit install of proj is located

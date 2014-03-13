@@ -1,11 +1,13 @@
 # VERSION NUMBER
-vers=3.0
+vers=3.1.4.1
 # Build type 32 or 64 (for linux versions)
 TOBUILD=64
 # contact email address to go into exe error messages
 email=arsf-processing@pml.ac.uk
 
-CPPFLAGS=-Wall -O4 `pkg-config --cflags blitz` -D VERSION='"$(vers)"' -D CONTACTEMAIL='"$(email)"'
+CPPFLAGS=-Wall -O4  -D VERSION='"$(vers)"' -D CONTACTEMAIL='"$(email)"'
+# rather than `pkg-config --cflags blitz` set up path to version 0.9 of blitz as APL is incompatible with later versions
+CPPFLAGS += -Iexternal_code/blitz-0.9/
 LDFLAGS=
 
 # don't actually need to link to blitz because we're only using the template functions defined in the .h files
