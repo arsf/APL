@@ -149,7 +149,7 @@ SpecimNavData::~SpecimNavData()
 }
 
 // Function to use the per second sync messages (SPTSMP) instead of the SPTSMP2 one
-// Primarily for use when there are no SPTSMP messages in the file 
+// Primarily for use when there are no SPTSMP messages in the file
 void SpecimNavData::UsePerSecondForSync()
 {
    if(use_persecond==true)

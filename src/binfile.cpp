@@ -30,8 +30,8 @@ BinFile::BinFile(std::string filename)
       br=new BILReader(filename);      
    else
       throw "Error. Iterleave type in file: "+filename+" is not bsq or bil.";
-}
 
+}
 //-------------------------------------------------------------------------
 // BinFile dectructor
 //-------------------------------------------------------------------------
