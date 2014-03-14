@@ -1,5 +1,5 @@
 # VERSION NUMBER
-vers=3.1.4.1
+vers=3.2.0.1
 # Build type 32 or 64 (for windows versions)
 TOBUILD=32
 # contact email address to go into exe error messages
