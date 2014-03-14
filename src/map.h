@@ -624,8 +624,10 @@ void Map<T>::MapLineSegments(TreeGrid* tg,std::string igmfilename,std::string le
          //Check that there is an even number of bounds
          if(colbounds.size()%2!=0)
          {
-            Logger::Log("Number of column bounds: "+ToString(colbounds.size())+" on row "+ToString(row));
-            throw "There is an odd number of column bounds in MapLineSegements. This should not happen - the edge outline needs fixing!";
+            Logger::Warning("Problem using internal column bounds calculation - falling back to slower mapping of each column for this row: "+ToString(rc.row));
+            colbounds.clear();
+            colbounds[0]=0;
+            colbounds[1]=grid->NumCols()-1;
          }
 
 //FIXME
