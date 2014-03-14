@@ -78,7 +78,7 @@ $(bin)/aplnav: $(obj)/navigation.o $(obj)/navfileclasses.o $(obj)/datahandler.o 
 $(bin)/aplcorr: $(obj)/geolocation.o $(obj)/geodesics.o $(obj)/cartesianvector.o $(obj)/dems.o $(obj)/viewvectors.o $(obj)/navbaseclass.o $(obj)/conversions.o $(obj)/planarsurface.o $(obj)/transformations.o $(obj)/leverbore.o $(obj)/commonfunctions.o $(obj)/bilwriter.o  $(common_libs)
 	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^
 
-$(bin)/apltran: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/transform.o $(common_libs)
+$(bin)/apltran: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/transform.o $(obj)/basic_igm_worker.o $(common_libs)
 	$(CC) $(CPPFLAGS) $(LDFLAGS) $(transform_ldflags) -o $@ $^
 
 $(bin)/aplmap: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/level3grid.o $(obj)/basic_igm_worker.o $(obj)/map_main.o $(obj)/TreeGrid.o $(obj)/treegrid_support.o $(obj)/os_dependant.o $(obj)/geodesics.o $(obj)/conversions.o $(common_libs) 

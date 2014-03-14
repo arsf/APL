@@ -24,6 +24,7 @@
 #include "commonfunctions.h"
 #include "binfile.h"
 #include "bilwriter.h"
+#include "basic_igm_worker.h"
 
 const double PI=4*atan(1.0);
 
@@ -755,8 +756,6 @@ int main(int argc,char* argv[])
    br->Close();
    bw->Close();
 
-   Logger::Log("Coordinate Transformation Complete");
-
    delete br;
    delete bw;
 
@@ -767,6 +766,15 @@ int main(int argc,char* argv[])
    pj_free(proj_in);
    pj_free(proj_out);
 
+   //Could output some pixel size information here that could be used for the later resampling stages
+   //Open the file that has been created
+   Basic_IGM_Worker igm(strOutputIGMFilename);
+   //Get the pixel size information for the centre pixel
+   double pixsize[7]={0};
+   igm.GetPixelSize(igm.Samples()/2,pixsize);
+   Logger::Log("\nAverage nadir pixel sizes in along track, across track are: "+ToString(pixsize[0])+" "+ToString(pixsize[1]));
+   Logger::Log("Average nadir pixel sizes in projected X,Y are: "+ToString(pixsize[3])+" "+ToString(pixsize[6]));
+   Logger::Log("Coordinate Transformation Complete");
 }
 
 //--------------------------------------------------------------------------

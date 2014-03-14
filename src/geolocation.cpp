@@ -1203,8 +1203,6 @@ int main(int argc,char* argv[])
       }
    }
 
-   Logger::Log("Geocorrection processing completed. \n\n");
-
    //Output the min/max to the bil header
    bilout->AddToHdr(";Min X = "+ToString(minlon));
    bilout->AddToHdr(";Max X = "+ToString(maxlon));
@@ -1219,9 +1217,10 @@ int main(int argc,char* argv[])
       Logger::Warning("There were some pixels which were not mapped because their view vector angle was greater"
                       " than the maximum allowed (set by -maxvvangle. Total number: "+ToString(numofbadpixels));
    }
+
+   Logger::Log("Geocorrection processing completed. \n\n");
    TidyArrays(Plat,Plon,Pheight,Px,Py,Pz,hdist);
    TidyObjects(cl,boresight,viewvectors,navigation,viewvectorsscanline,ellipsoid,dem,bilout);
-
 }
 
 

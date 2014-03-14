@@ -95,7 +95,7 @@ $(bin)/aplshift.exe: $(obj)/bilwriter.o $(obj)/navshift.o $(obj)/datahandler.o $
 $(bin)/aplcorr.exe: $(obj)/geolocation.o $(obj)/geodesics.o $(obj)/cartesianvector.o $(obj)/dems.o $(obj)/viewvectors.o $(obj)/navbaseclass.o $(obj)/conversions.o $(obj)/planarsurface.o $(obj)/transformations.o $(obj)/leverbore.o $(obj)/commonfunctions.o $(obj)/bilwriter.o  $(common_libs)
 	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
 
-$(bin)/apltran.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/transform.o $(common_libs)
+$(bin)/apltran.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/transform.o $(obj)/basic_igm_worker.o $(common_libs)
 	$(CC) $(CPPFLAGS) $(LDFLAGS) $(transform_ldflags) -o $@ $^ -lstdc++
 
 $(bin)/aplmap.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o  $(obj)/level3grid.o $(obj)/basic_igm_worker.o $(obj)/map_main.o  $(obj)/TreeGrid.o $(obj)/treegrid_support.o $(obj)/os_dependant.o $(obj)/geodesics.o $(obj)/conversions.o $(common_libs)
