@@ -58,12 +58,12 @@ const double PI=atan(1.0)*4;
 //-------------------------------------------------------------------------
 //Convert Geodetic or Geocentric Lat/Lon/Hei to ECEF XYZ
 //-------------------------------------------------------------------------
-int ConvertLLH2XYZ(const double* const Lat, const double* const Lon, const double* const Hei, double* const X, double* const Y, double* const Z, const unsigned int npoints, unsigned int type,Ellipsoid* const ell);
+int ConvertLLH2XYZ(const double* const Lat, const double* const Lon, const double* const Hei, double* const X, double* const Y, double* const Z, const unsigned int npoints, unsigned int type,Ellipsoid* const ell,const int baddatavalue=-9999);
 
 //-------------------------------------------------------------------------
 //Convert ECEF XYZ to Geodetic or Geocentric Lat/Lon/Hei
 //-------------------------------------------------------------------------
-int ConvertXYZ2LLH(const double* const X, const double* const Y, const double* const Z, double* const Lat, double* const Lon, double* const Hei, const unsigned int npoints, unsigned int type,Ellipsoid* const ell);
+int ConvertXYZ2LLH(const double* const X, const double* const Y, const double* const Z, double* const Lat, double* const Lon, double* const Hei, const unsigned int npoints, unsigned int type,Ellipsoid* const ell,const int baddatavalue=-9999999);
 
 
 #endif

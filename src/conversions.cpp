@@ -51,6 +51,17 @@ Ellipsoid::Ellipsoid(ELIPMODEL ellmodel)
 
 }
 
+
+//Test for bad data value
+bool TestForBadData(double dataval,int baddataval)
+{
+   if(dataval == baddataval)
+      return true;
+   else
+      return false;
+}
+
+
 //-------------------------------------------------------------------------
 //Convert Geodetic or Geographic Lat/Lon/Hei to ECEF XYZ
 //Pass pointers to arrays containing the Lat/Lon/hei data
@@ -58,7 +69,7 @@ Ellipsoid::Ellipsoid(ELIPMODEL ellmodel)
 //and the number of points to be converted (length of arrays).
 //Type should be either GEOGRAPHIC or GEODETIC
 //-------------------------------------------------------------------------
-int ConvertLLH2XYZ(const double* const Lat, const double* const Lon, const double* const Hei, double* const X, double* const Y, double* const Z, const unsigned int npoints, unsigned int type,Ellipsoid* const ell)
+int ConvertLLH2XYZ(const double* const Lat, const double* const Lon, const double* const Hei, double* const X, double* const Y, double* const Z, const unsigned int npoints, unsigned int type,Ellipsoid* const ell,const int baddatavalue)
 {
    double a=ell->a();
    //double b=ell->b();
@@ -74,13 +85,20 @@ int ConvertLLH2XYZ(const double* const Lat, const double* const Lon, const doubl
          double lorad=0, larad=0;
          for(unsigned int i=0;i<npoints;i++)
          {
-            //Need Lat/Lon/Hei in radians here so convert from degrees
-            larad=Lat[i]*PI/180.0;
-            lorad=Lon[i]*PI/180.0;
-            C=sqrt(1-ee*sin(larad)*sin(larad));
-            X[i]=(a/C + Hei[i])*cos(larad)*cos(lorad);
-            Y[i]=(a/C + Hei[i])*cos(larad)*sin(lorad);
-            Z[i]=((a*(1-ee))/C + Hei[i])*sin(larad);
+            if(TestForBadData(Lat[i],baddatavalue) || TestForBadData(Lat[i],baddatavalue)|| TestForBadData(Hei[i],baddatavalue))
+            {
+               X[i]=Y[i]=Z[i]=baddatavalue;
+            }
+            else
+            {
+               //Need Lat/Lon/Hei in radians here so convert from degrees
+               larad=Lat[i]*PI/180.0;
+               lorad=Lon[i]*PI/180.0;
+               C=sqrt(1-ee*sin(larad)*sin(larad));
+               X[i]=(a/C + Hei[i])*cos(larad)*cos(lorad);
+               Y[i]=(a/C + Hei[i])*cos(larad)*sin(lorad);
+               Z[i]=((a*(1-ee))/C + Hei[i])*sin(larad);
+            }
          }
       }
       break;
@@ -99,7 +117,7 @@ int ConvertLLH2XYZ(const double* const Lat, const double* const Lon, const doubl
 //-------------------------------------------------------------------------
 //Convert ECEF XYZ to Geodetic or Geographic Lat/Lon/Hei
 //-------------------------------------------------------------------------
-int ConvertXYZ2LLH(const double* const X, const double* const Y, const double* const Z, double* const Lat, double* const Lon, double* const Hei, const unsigned int npoints, unsigned int type,Ellipsoid* const ell)
+int ConvertXYZ2LLH(const double* const X, const double* const Y, const double* const Z, double* const Lat, double* const Lon, double* const Hei, const unsigned int npoints, unsigned int type,Ellipsoid* const ell,const int baddatavalue)
 {
    double a=ell->a();
    double b=ell->b();
@@ -120,20 +138,27 @@ int ConvertXYZ2LLH(const double* const X, const double* const Y, const double* c
          
          for(unsigned int i=0;i<npoints;i++)
          {
-            rr=(X[i]*X[i]+Y[i]*Y[i]);
-            F=54*bb*Z[i]*Z[i];
-            G=rr+(1-ee)*Z[i]*Z[i]-ee*EE;
-            C=(ee*ee*F*rr)/(G*G*G);
-            S=pow((1+C+sqrt(C*C+2*C)),(1/3.0));
-            P=(F)/(3*G*G*(S+1+1/S)*(S+1+1/S));
-            Q=sqrt(1+2*ee*ee*P);
-            r0=((-P*ee*sqrt(rr))/(1+Q)) + sqrt(0.5*aa*(1+1/Q) - (P*(1-ee)*Z[i]*Z[i])/(Q*(1+Q)) -0.5*P*rr );
-            U=sqrt( (sqrt(rr)-ee*r0)*(sqrt(rr)-ee*r0) + Z[i]*Z[i]);
-            V=sqrt( (sqrt(rr)-ee*r0)*(sqrt(rr)-ee*r0) +(1-ee)*Z[i]*Z[i] );
-            Z0=(bb*Z[i])/(a*V);
-            Hei[i]=U*(1-(bb/(a*V)));
-            Lat[i]=atan((Z[i] + eeprime*Z0)/(sqrt(rr)));
-            Lon[i]=atan2(Y[i],X[i]);
+            if(TestForBadData(X[i],baddatavalue) || TestForBadData(Y[i],baddatavalue)|| TestForBadData(Z[i],baddatavalue))
+            {
+               Lat[i]=Lon[i]=Hei[i]=baddatavalue;
+            }
+            else
+            {
+               rr=(X[i]*X[i]+Y[i]*Y[i]);
+               F=54*bb*Z[i]*Z[i];
+               G=rr+(1-ee)*Z[i]*Z[i]-ee*EE;
+               C=(ee*ee*F*rr)/(G*G*G);
+               S=pow((1+C+sqrt(C*C+2*C)),(1/3.0));
+               P=(F)/(3*G*G*(S+1+1/S)*(S+1+1/S));
+               Q=sqrt(1+2*ee*ee*P);
+               r0=((-P*ee*sqrt(rr))/(1+Q)) + sqrt(0.5*aa*(1+1/Q) - (P*(1-ee)*Z[i]*Z[i])/(Q*(1+Q)) -0.5*P*rr );
+               U=sqrt( (sqrt(rr)-ee*r0)*(sqrt(rr)-ee*r0) + Z[i]*Z[i]);
+               V=sqrt( (sqrt(rr)-ee*r0)*(sqrt(rr)-ee*r0) +(1-ee)*Z[i]*Z[i] );
+               Z0=(bb*Z[i])/(a*V);
+               Hei[i]=U*(1-(bb/(a*V)));
+               Lat[i]=atan((Z[i] + eeprime*Z0)/(sqrt(rr)));
+               Lon[i]=atan2(Y[i],X[i]);
+            }
          }
       }
       break;

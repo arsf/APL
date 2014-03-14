@@ -35,6 +35,18 @@ enum conversion_type {ECEF};
 enum vvmethods {NONE,SPLIT, COMBINED};
 
 //-------------------------------------------------------------------------
+// Value to assign to pixels that cannot be located properly. For example
+// their view vector may be above the horizon
+//-------------------------------------------------------------------------
+const int BADDATAVALUE=-9999;
+
+//-------------------------------------------------------------------------
+// Maximum allowed viewvector angle (degrees) - all others above this will be given 
+// the bad data value and not geocorrected
+//-------------------------------------------------------------------------
+const float defaultmaxallowedvvangle=80.0;
+
+//-------------------------------------------------------------------------
 // Software description
 //-------------------------------------------------------------------------
 const std::string DESCRIPTION="Geocorrection Software";
@@ -42,7 +54,7 @@ const std::string DESCRIPTION="Geocorrection Software";
 //----------------------------------------------------------------
 //Number of options that can be on command line
 //----------------------------------------------------------------
-const int number_of_possible_options = 12;
+const int number_of_possible_options = 13;
 
 //----------------------------------------------------------------
 //Option names that can be on command line
@@ -59,6 +71,7 @@ const std::string availableopts[number_of_possible_options]={
 "-dem",
 "-lev1file",
 "-atmosfile",
+"-maxvvangle",
 "-help"
 }; 
 
@@ -77,15 +90,13 @@ const std::string optsdescription[number_of_possible_options]={
 "Digital Elevation Model to use for geocorrection. A 1 band BSQ/BIL file with heights in WGS84 Latitude/Longitude referenced to the WGS84 ellipsoid.)",
 "Level 1 data filename - uses this to bin and trim view vector file to fit level 1 data set",
 "Filename to output extra parameters to which are useful for atmospheric correction. These are: view azimuth and zenith, dem slope and dem aspect at intersect dem cell.",
+"Maximum allowed view vector look angle in degrees. Sometimes if mapping on a tight bank of the aircraft view vectors can reach above the horizon. To prevent this cap the viewvectors to this maximum value. Default is "+ToString(defaultmaxallowedvvangle),
 "Display this help"
 }; 
 
 //----------------------------------------------------------------
 // Function definitions
 //----------------------------------------------------------------
-
-//Gives a description of the program if '-help' given on command line
-//void ProgramUsage(std::string exename,Logger log);
 
 //Delete Arrays or Objects if they have been created, to free up memory
 void TidyArrays(double* Plat,double* Plon,double* Pheight,double* Px,double* Py,double* Pz,double* hdist);
@@ -99,8 +110,8 @@ void GetDistanceToEllipsoid(const double X, const double Y, const double Z, cons
 blitz::TinyMatrix<double,3,1> GetNadirVector(const double lat,const double lon);
 
 //Function to get the scan line view vectors into cartesian ECEF XYZ
-void GetScanLineViewVectorsInECEFXYZ(CartesianVector* ECEF_XYZ, ViewVectors* const vv,const double lat, const double lon,
-                                       vvmethods method,const double theta=0,const double phi=0,const double kappa=0);
+void GetScanLineViewVectorsInECEFXYZ(CartesianVector* ECEF_XYZ, ViewVectors* const vv,const double lat, const double lon,vvmethods method,
+                                       const float maxallowedvvangle,uint64_t &numofbadpixels,const double theta=0,const double phi=0,const double kappa=0);
 
 //Function to get the intersect point between the DEM and view vector
 void FindIntersect(double* const px,double* const py,double* const pz,double* const seedlat,double* const seedlon,
@@ -197,6 +208,10 @@ int main(int argc,char* argv[])
    std::string strLevel1FileName;
    //Filename if atmospheric software parameters are required to be output 
    std::string strAtmosOutFilename;
+
+   // Maximum allowed viewvector angle (degrees) - all others above this will be given the bad data value and not geocorrected
+   float maxallowedvvangle=defaultmaxallowedvvangle;
+   uint64_t numofbadpixels=0;
 
    std::stringstream strout;  //string to hold text messages in
    int retval=0; //return values stored here
@@ -522,6 +537,24 @@ int main(int argc,char* argv[])
          strAtmosOutFilename="";
       }
 
+      if(cl->OnCommandLine("-maxvvangle"))
+      {
+         //Check that an argument follows the maxvvangle option - and get it if it exists
+         if(cl->GetArg("-maxvvangle").compare(optiononly)!=0)
+         {   
+            std::string keyword=cl->GetArg("-maxvvangle");
+            //Check that it is a number
+            if(keyword.find_first_not_of("0123456789.") == std::string::npos)
+            {
+               maxallowedvvangle=static_cast<float>(StringToDouble(keyword));
+               Logger::Log("Will use a maximum view vector of "+ToString(maxallowedvvangle)+"degrees.");
+            }
+            else
+               throw CommandLine::CommandLineException("Unrecognised maxvvangle value - should be a number <90 in degrees.\n");
+         }
+         else
+            throw CommandLine::CommandLineException("Argument -maxvvangle must immediately precede the maximum angle in degrees value.\n");
+      }
       //*****************************************************************
       // ENTER NEW COMMAND LINE OPTION CODE HERE
       //*****************************************************************
@@ -566,6 +599,9 @@ int main(int argc,char* argv[])
 
    //Flush the log here
    log.Flush();   
+
+   //Convert the maxallowedvvangle to radians
+   maxallowedvvangle=maxallowedvvangle*PI/180;
 
    //----------------------------------------------------------------------------
    //Set up the view vectors 
@@ -668,32 +704,53 @@ int main(int argc,char* argv[])
    blitz::TinyMatrix<double,3,1> myNadir;
    //index for vv closest to nadir
    unsigned int nadirindex=0; 
+   try
+   {
+      //----------------------------------------------------------------------------
+      //Output some information about the navigation data before going into the loop
+      //----------------------------------------------------------------------------
+      navigation->ReadScan(0);
+      lat=navigation->Lat();
+      lon=navigation->Lon();
+      hei=navigation->Hei();
+      Logger::Log("\nAircraft start position (Lon,Lat,Hei): "+ToString(lon)+" "+ToString(lat)+" "+ToString(hei));
+      Logger::Log("Aircraft navigation start time: "+ToString(navigation->Time()));
+      navigation->ReadScan(navigation->TotalScans()-1);
+      lat=navigation->Lat();
+      lon=navigation->Lon();
+      hei=navigation->Hei();
+      Logger::Log("\nAircraft end position (Lon,Lat,Hei): "+ToString(lon)+" "+ToString(lat)+" "+ToString(hei));
+      Logger::Log("Aircraft navigation end time: "+ToString(navigation->Time()));
+      Logger::Log("Total number of navigation scan lines to map: "+ToString(navigation->TotalScans()));
 
-   //----------------------------------------------------------------------------
-   //Output some information about the navigation data before going into the loop
-   //----------------------------------------------------------------------------
-   navigation->ReadScan(0);
-   lat=navigation->Lat();
-   lon=navigation->Lon();
-   hei=navigation->Hei();
-   Logger::Log("\nAircraft start position (Lon,Lat,Hei): "+ToString(lon)+" "+ToString(lat)+" "+ToString(hei));
-   Logger::Log("Aircraft navigation start time: "+ToString(navigation->Time()));
-   navigation->ReadScan(navigation->TotalScans()-1);
-   lat=navigation->Lat();
-   lon=navigation->Lon();
-   hei=navigation->Hei();
-   Logger::Log("\nAircraft end position (Lon,Lat,Hei): "+ToString(lon)+" "+ToString(lat)+" "+ToString(hei));
-   Logger::Log("Aircraft navigation end time: "+ToString(navigation->Time()));
-   Logger::Log("Total number of navigation scan lines to map: "+ToString(navigation->TotalScans()));
+      //Test extent of nav file here and log the min/max
+      navigation->FindLimits();
+      Logger::Log("\nNavigation Min/Max Latitude: "+ToString(navigation->MinLat())+" "+ToString(navigation->MaxLat()));
+      Logger::Log("Navigation Min/Max Longitude: "+ToString(navigation->MinLon())+" "+ToString(navigation->MaxLon()));
+      Logger::Log("Navigation Min/Max Height: "+ToString(navigation->MinHei())+" "+ToString(navigation->MaxHei()));
+      Logger::Log("Navigation Min/Max Roll: "+ToString(navigation->MinRoll())+" "+ToString(navigation->MaxRoll()));
+      //Flush log to output before entering loop
+      log.Flush();
 
-   //Test extent of nav file here and log the min/max
-   navigation->FindLimits();
-   Logger::Log("\nNavigation Min/Max Latitude: "+ToString(navigation->MinLat())+" "+ToString(navigation->MaxLat()));
-   Logger::Log("Navigation Min/Max Longitude: "+ToString(navigation->MinLon())+" "+ToString(navigation->MaxLon()));
-   Logger::Log("Navigation Min/Max Height: "+ToString(navigation->MinHei())+" "+ToString(navigation->MaxHei()));
-   Logger::Log("Navigation Min/Max Roll: "+ToString(navigation->MinRoll())+" "+ToString(navigation->MaxRoll()));
-   //Flush log to output before entering loop
-   log.Flush();
+   }
+   catch(BinaryReader::BRexception e)
+   {
+      Logger::Error(std::string(e.what())+"\n"+e.info);
+      TidyObjects(cl,boresight,viewvectors,navigation,viewvectorsscanline,ellipsoid,dem,bilout);
+      exit(1); //exit the program
+   }
+   catch(char const* e)
+   {
+      Logger::Error(e);
+      TidyObjects(cl,boresight,viewvectors,navigation,viewvectorsscanline,ellipsoid,dem,bilout);
+      exit(1);
+   }
+   catch(...)
+   {
+      PrintAbnormalExitMessage(__FILE__,__LINE__,niceexename,VERSION,CONTACTEMAIL,cl->ReturnCLAsString());
+      TidyObjects(cl,boresight,viewvectors,navigation,viewvectorsscanline,ellipsoid,dem,bilout);
+      exit(1);
+   } 
 
    //----------------------------------------------------------------------------
    //If DEM is to be used then do the following section of code
@@ -829,6 +886,7 @@ int main(int argc,char* argv[])
       bilout->AddToHdr(";These describe which pixels from the original raw image the IGM file positions relate to.");
       bilout->AddToHdr("x start = "+xstart);
       bilout->AddToHdr("y start = "+ystart);
+      bilout->AddToHdr("data ignore value = "+ToString(BADDATAVALUE));
 
    }
    catch(BILWriter::BILexception e)
@@ -911,11 +969,11 @@ int main(int argc,char* argv[])
          //Convert the view vectors into earth centred earth fixed cartesians
          if(vvmethod==COMBINED)
          {
-            GetScanLineViewVectorsInECEFXYZ(ECEF_vectors,viewvectorsscanline,lat,lon,vvmethod);
+            GetScanLineViewVectorsInECEFXYZ(ECEF_vectors,viewvectorsscanline,lat,lon,vvmethod,maxallowedvvangle,numofbadpixels);
          }
          else if(vvmethod==SPLIT)
          {
-            GetScanLineViewVectorsInECEFXYZ(ECEF_vectors,viewvectorsscanline,lat,lon,vvmethod,navigation->Roll(),navigation->Pitch(),navigation->Heading());
+            GetScanLineViewVectorsInECEFXYZ(ECEF_vectors,viewvectorsscanline,lat,lon,vvmethod,maxallowedvvangle,numofbadpixels,navigation->Roll(),navigation->Pitch(),navigation->Heading());
          }
 
          //If Ellipsoid mapping has been requested on command line then map to the ellipsoid
@@ -926,9 +984,16 @@ int main(int argc,char* argv[])
             //For each of the pixels per scan line, project onto the ellipsoid surface
             for(unsigned int p=0;p<viewvectorsscanline->NumberItems();p++)
             {
-               Px[p]=X+ECEF_vectors->X[p]*hdist[p];
-               Py[p]=Y+ECEF_vectors->Y[p]*hdist[p];
-               Pz[p]=Z+ECEF_vectors->Z[p]*hdist[p];
+               if(hdist[p]==BADDATAVALUE)
+               {
+                  Px[p]=Py[p]=Pz[p]=BADDATAVALUE;
+               }
+               else
+               {
+                  Px[p]=X+ECEF_vectors->X[p]*hdist[p];
+                  Py[p]=Y+ECEF_vectors->Y[p]*hdist[p];
+                  Pz[p]=Z+ECEF_vectors->Z[p]*hdist[p];
+               }
             }
          }
          else
@@ -954,6 +1019,7 @@ int main(int argc,char* argv[])
                //For each pixel from nadir index to end of ccd
                for(unsigned int pixel=nadirindex;pixel<viewvectorsscanline->NumberItems();pixel++)
                {
+                  //FindIntersect(dem,&Px[pixel],&Py[pixel],&Pz[pixel],&seedlat,&seedlon,ellipsoid,ECEF_vectors,pixel);           
                   FindIntersect(&Px[pixel],&Py[pixel],&Pz[pixel],&seedlat,&seedlon,ellipsoid,dem,ECEF_vectors,pixel);
                }
                //Reset seed lat/lon to aircraft/nadir position
@@ -966,6 +1032,7 @@ int main(int argc,char* argv[])
                //Now go through the other viewvectors i.e. nadir index to start of ccd
                for(int pixel=nadirindex-1;pixel>=0;pixel--)
                {
+                  //FindIntersect(dem,&Px[pixel],&Py[pixel],&Pz[pixel],&seedlat,&seedlon,ellipsoid,ECEF_vectors,pixel);             
                   FindIntersect(&Px[pixel],&Py[pixel],&Pz[pixel],&seedlat,&seedlon,ellipsoid,dem,ECEF_vectors,pixel);
                }
             }
@@ -998,7 +1065,7 @@ int main(int argc,char* argv[])
          }
 
          //Now convert the new pixel position to LLH for each pixel of scanline - THESE ARE RETURNED AS RADIANS
-         ConvertXYZ2LLH(Px, Py, Pz,Plat, Plon, Pheight,viewvectorsscanline->NumberItems(),GEODETIC,ellipsoid);
+         ConvertXYZ2LLH(Px, Py, Pz,Plat, Plon, Pheight,viewvectorsscanline->NumberItems(),GEODETIC,ellipsoid,BADDATAVALUE);
 
          //if atmospheric correction software parameters are to be output - do this here
          if(strAtmosOutFilename.compare("")!=0)
@@ -1078,8 +1145,11 @@ int main(int argc,char* argv[])
             //Need to convert from radians to degrees
             for(unsigned int j=0;j<viewvectorsscanline->NumberItems();j++)
             {
-               Plon[j]=Plon[j]*180/PI;
-               Plat[j]=Plat[j]*180/PI;
+               if((Plon[j]!=BADDATAVALUE)||(Plat[j]!=BADDATAVALUE))
+               {
+                  Plon[j]=Plon[j]*180/PI;
+                  Plat[j]=Plat[j]*180/PI;
+               }
             }
 
             //Keep track of min/max lat and longs here
@@ -1142,6 +1212,13 @@ int main(int argc,char* argv[])
    bilout->AddToHdr(";Max Y = "+ToString(maxlat));
 
    bilout->Close();
+
+   //Output the number of bad pixels
+   if(numofbadpixels>0)
+   {
+      Logger::Warning("There were some pixels which were not mapped because their view vector angle was greater"
+                      " than the maximum allowed (set by -maxvvangle. Total number: "+ToString(numofbadpixels));
+   }
    TidyArrays(Plat,Plon,Pheight,Px,Py,Pz,hdist);
    TidyObjects(cl,boresight,viewvectors,navigation,viewvectorsscanline,ellipsoid,dem,bilout);
 
@@ -1154,7 +1231,7 @@ int main(int argc,char* argv[])
 // These can be ignored if method is COMBINED
 //-------------------------------------------------------------------------
 void GetScanLineViewVectorsInECEFXYZ(CartesianVector* ECEF_XYZ, ViewVectors* const vv,const double lat, const double lon,
-                                       vvmethods method,const double theta,const double phi,const double kappa)
+                                       vvmethods method,const float maxallowedvvangle,uint64_t &numofbadpixels,const double theta,const double phi,const double kappa)
 {
    //Store the returned XYZ from the GetVVinECEFXYZ function
    double ECEFXYZ[3]={0,0,0};
@@ -1162,12 +1239,17 @@ void GetScanLineViewVectorsInECEFXYZ(CartesianVector* ECEF_XYZ, ViewVectors* con
 
    blitz::TinyMatrix<double,3,1> nadir;
    nadir=0,0,1;
-
+  
+   //We need a nadir unit vector in ECEF for the platform
+   //Use the aircraft position vector - not perfect as assumes a spheroidal Earth but may be good enough
+   //The aircraft position is the origin in the ECEF vector array
+   double down_vector[3]={-ECEF_XYZ->OriginX(),-ECEF_XYZ->OriginY(),-ECEF_XYZ->OriginZ()};
+   double down_vector_magnitude=sqrt(down_vector[0]*down_vector[0] + down_vector[1]*down_vector[1] + down_vector[2]*down_vector[2]);
+   double unit_down_vector[3]={down_vector[0]/down_vector_magnitude,down_vector[1]/down_vector_magnitude,down_vector[2]/down_vector_magnitude};   
+   double cos_al=0;
    //For each pixel in the scan line, convert the view vector to ECEF XYZ
    for(unsigned int pixel=0;pixel<vv->NumberItems();pixel++)
    {
-      //DEBUGPRINT("Pixel number:"<<pixel)      
-
       //These are angles that rotate nadir to local level: sensor look ( + aircraft attitude if COMBINED)
       roll=vv->rotX[pixel];
       pitch=vv->rotY[pixel];
@@ -1183,10 +1265,24 @@ void GetScanLineViewVectorsInECEFXYZ(CartesianVector* ECEF_XYZ, ViewVectors* con
          GetVVinECEFXYZ(&nadir,ECEFXYZ,lat,lon,roll,pitch,heading,theta,phi,kappa);         
       }
 
-      //Now update the returned ECEF viewvectors
-      ECEF_XYZ->X[pixel]=ECEFXYZ[0];
-      ECEF_XYZ->Y[pixel]=ECEFXYZ[1];      
-      ECEF_XYZ->Z[pixel]=ECEFXYZ[2];      
+      //Test if view vector is above the horizon (eeek) or not (phew)
+      //dot nadir vs vv and test the angle is less than maxallowedvvangle
+      cos_al=unit_down_vector[0]*ECEFXYZ[0] + unit_down_vector[1]*ECEFXYZ[1] + unit_down_vector[2]*ECEFXYZ[2];
+      if((cos_al < 0) || (acos(cos_al) > maxallowedvvangle))
+      {
+         //BAD?
+         ECEF_XYZ->X[pixel]=BADDATAVALUE;
+         ECEF_XYZ->Y[pixel]=BADDATAVALUE;      
+         ECEF_XYZ->Z[pixel]=BADDATAVALUE; 
+         numofbadpixels++;  
+      }
+      else
+      {
+         //Now update the returned ECEF viewvectors
+         ECEF_XYZ->X[pixel]=ECEFXYZ[0];
+         ECEF_XYZ->Y[pixel]=ECEFXYZ[1];      
+         ECEF_XYZ->Z[pixel]=ECEFXYZ[2];  
+      }    
    }
 }
 
@@ -1212,6 +1308,12 @@ void GetDistanceToEllipsoid(const double X, const double Y, const double Z, cons
    //For each pixel
    for(unsigned int pixel=0;pixel<npixels;pixel++)
    {
+      if((ECEF_vector->X[pixel]==BADDATAVALUE)||(ECEF_vector->Y[pixel]==BADDATAVALUE)||(ECEF_vector->Z[pixel]==BADDATAVALUE))
+      {
+         hdistance[pixel]=BADDATAVALUE;   
+         continue;
+      }
+
       //Set up the quadratic equation components
       A=(ECEF_vector->X[pixel]*ECEF_vector->X[pixel] + ECEF_vector->Y[pixel]*ECEF_vector->Y[pixel]) / aa + (ECEF_vector->Z[pixel]*ECEF_vector->Z[pixel])/bb;
       B=2*(X*ECEF_vector->X[pixel] + Y*ECEF_vector->Y[pixel])/aa + (2*Z*ECEF_vector->Z[pixel])/bb;
@@ -1230,6 +1332,10 @@ void GetDistanceToEllipsoid(const double X, const double Y, const double Z, cons
          hdistance[pixel]=h1;
       else
          hdistance[pixel]=h2;
+
+      //We should check for negative distances here
+      if(hdistance[pixel]<0)
+         hdistance[pixel]=BADDATAVALUE;
    }
 }
 
