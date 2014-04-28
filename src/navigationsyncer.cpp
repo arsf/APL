@@ -241,16 +241,25 @@ void NavigationSyncer::FindScanTimes()
       //of the level 1 start time. This is hard coded below!
       if(mindiff > lev1firstscanmaxexpectedsize)
       {
-         //Closest is still greater than "lev1firstscanmaxexpectedsize" seconds away - just list choices and let user select.
-         Logger::Log("Multiple identical sync delay values in Specim nav file. None fall within the "+ToString(lev1firstscanmaxexpectedsize)+" seconds window of start time of level 1 file.");
-         Logger::Log("Header start time: "+ToString(lev1starttime)+" sync delay value: "+ToString(hdrsync)+" ["+ToString(NOSYNCINHDR)+" means no header sync value]");
-         for(unsigned int vecindex=0;vecindex<navfile->GetNumSyncs();vecindex++)   
+         //Are there multiple sync messages?
+         if(navfile->GetNumSyncs()>1)
          {
-            //The value to add onto the hdr start time to get the "synced" time assuming the hdr start time is used as scan line 0 time
-            double scntoff=(navfile->GetGPSSync(vecindex) -navfile->GetSyncTime(vecindex)) - lev1starttime;
-            Logger::Log("Sync message time: "+ToString(navfile->GetGPSSync(vecindex))+" Scantimeoffset value to use: "+ToString(scntoff));
+            //Closest is still greater than "lev1firstscanmaxexpectedsize" seconds away - just list choices and let user select.
+            Logger::Log("Multiple identical sync delay values in Specim nav file. None fall within the "+ToString(lev1firstscanmaxexpectedsize)+" seconds window of start time of level 1 file.");
+            Logger::Log("Header start time: "+ToString(lev1starttime)+" sync delay value: "+ToString(hdrsync)+" ["+ToString(NOSYNCINHDR)+" means no header sync value]");
+            for(unsigned int vecindex=0;vecindex<navfile->GetNumSyncs();vecindex++)   
+            {
+               //The value to add onto the hdr start time to get the "synced" time assuming the hdr start time is used as scan line 0 time
+               double scntoff=(navfile->GetGPSSync(vecindex) -navfile->GetSyncTime(vecindex)) - lev1starttime;
+               Logger::Log("Sync message time: "+ToString(navfile->GetGPSSync(vecindex))+" Scantimeoffset value to use: "+ToString(scntoff));
+            }
+            throw "Multiple possibilities for sync time. Try using one of the suggested values above as a -scantimeoffset and processing with -nonav";
          }
-         throw "Multiple possibilities for sync time. Try using one of the suggested values above as a -scantimeoffset and processing with -nonav";
+         else
+         {
+            //Only 1 sync message but > lev1firstscanmaxexpectedsize seconds away - use with a warning
+            Logger::Warning("1 Sync message found but greater than 'maximum expected size' of "+ToString(lev1firstscanmaxexpectedsize)+" seconds away from level1 start time.");
+         }
       }
 
       //output a message for the sync index used
