@@ -149,7 +149,7 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
 
    //Create a grid info object describing this section
    Logger::Verbose("Creating grid info using min x,y max x,y: "+ToString(minx)+" "+ToString(miny)+" "+ToString(maxx)+" "+ToString(maxy));
-   segmentinfo=new Level3GridInfo(minx,miny,maxx,maxy,psx,psy,bandlist);
+   segmentinfo=new Level3GridInfo(minx,miny,maxx,maxy,psx,psy,bandlist,false);
 
    //Need to somewhere offset the segmentinfo bounds Tx,Ty such that they are
    //a divisor of the pixel size and the level3GridInfo Tx,Ty
@@ -235,17 +235,14 @@ void LineSegment<T>::OffsetToGrid(Level3GridInfo* ginfo)
    double modTLX=fmod(segmentinfo->TopLeftX()-ginfo->TopLeftX(),segmentinfo->PixelSizeX());
    double modTLY=fmod(ginfo->TopLeftY()-segmentinfo->TopLeftY(),segmentinfo->PixelSizeY());
 
-//   Logger::Verbose("Top Left grid overlay X (before):"+ToString(ginfo->TopLeftX())+" "+ToString(segmentinfo->TopLeftX())+" "+ToString(modTLX));
-//   Logger::Verbose("Top Left grid overlay Y (before):"+ToString(ginfo->TopLeftY())+" "+ToString(segmentinfo->TopLeftY())+" "+ToString(modTLY));
-
    //This is required (esp.) for mapping in degrees as fmod returns the decimal part not the 
    //modulous of the number (in mathematical terms).
-   if((fabs(modTLX)<EPSILON)||(fabs(modTLX)-fabs(segmentinfo-> PixelSizeX())<EPSILON))
+   if((fabs(modTLX)<EPSILON)||(fabs(fabs(modTLX)-fabs(segmentinfo-> PixelSizeX()))<EPSILON))
    {
       modTLX=0;
    }
 
-   if((fabs(modTLY)<EPSILON)||(fabs(modTLY)-fabs(segmentinfo-> PixelSizeY())<EPSILON))
+   if((fabs(modTLY)<EPSILON)||(fabs(fabs(modTLY)-fabs(segmentinfo-> PixelSizeY()))<EPSILON))
    {
       modTLY=0;
    }

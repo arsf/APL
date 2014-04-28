@@ -73,7 +73,7 @@ public:
 class Level3GridInfo
 {
 public:
-   Level3GridInfo(double minX, double minY, double maxX, double maxY,double psx,double psy,std::string bandlist);
+   Level3GridInfo(double minX, double minY, double maxX, double maxY,double psx,double psy,std::string bandlist,bool round=true);
    Level3GridInfo(Level3GridInfo* ref);
    ~Level3GridInfo();
 
@@ -124,7 +124,7 @@ class Level3Grid
 public:
    Level3Grid();
    Level3Grid(Level3GridInfo* gi);
-   Level3Grid(double output_pixel_sizeX,double output_pixel_sizeY,std::string bandlist,Area* outputrect);
+   Level3Grid(double output_pixel_sizeX,double output_pixel_sizeY,std::string bandlist,Area* outputrect,bool round=true);
    ~Level3Grid();
 
    const unsigned long int NumRows()const{return info->NumRows();}

@@ -60,7 +60,7 @@ public:
    Map();
    Map(std::string outfname,double Xpixelsize,double Ypixelsize, std::string strBandList,Area* output_area,
             std::string lev1fname,Interpolators::InterpolatorType itype,int npoints,uint64_t buffsize,
-            BILWriter::DataType datatype,std::string strRowColMappingFilename,T ndv);
+            BILWriter::DataType datatype,std::string strRowColMappingFilename,T ndv=0,bool round=true);
    ~Map();
 
    virtual void AssignProjection(std::string proj);
@@ -169,11 +169,11 @@ Map<T>::~Map()
 //----------------------------------------------------------------------
 template<class T>
 Map<T>::Map(std::string outfname,double Xpixelsize,double Ypixelsize, std::string strBandList,Area* output_area,std::string lev1fname,
-            Interpolators::InterpolatorType itype,int npoints,uint64_t buffsize,BILWriter::DataType datatype,std::string strRowColMappingFilename,T ndv=0)
+            Interpolators::InterpolatorType itype,int npoints,uint64_t buffsize,BILWriter::DataType datatype,std::string strRowColMappingFilename,T ndv,bool round)
 {
    Logger::Verbose("Constructing Map.");
    Logger::Verbose("Building Map Level 3 grid ... ");
-   grid=new Level3Grid(Xpixelsize,Ypixelsize,strBandList,output_area);
+   grid=new Level3Grid(Xpixelsize,Ypixelsize,strBandList,output_area,round);
    Logger::Verbose("Building Map data writer ... ");
    writer=new BILWriter(outfname,datatype,grid->NumRows(),grid->NumCols(),grid->NumBands(),'w');
    boundedwriter=fopen(outfname.c_str(), "wb" );
@@ -576,7 +576,7 @@ void Map<T>::MapLineSegments(TreeGrid* tg,std::string igmfilename,std::string le
          if(linesegment->segmentinfo->TopLeftY()>grid->BottomRightY())
          {
             //Output some lines of 0's upto the first line of the segment
-            for(int i=0;i<(int)((grid->TopLeftY() - linesegment->segmentinfo->TopLeftY())/grid->PixelSizeY());i++)
+            for(int i=0;i<static_cast<int>(round((grid->TopLeftY() - linesegment->segmentinfo->TopLeftY())/grid->PixelSizeY()));i++)
             {
                number_of_lines_written=WriteBuffer();
             }
@@ -584,7 +584,7 @@ void Map<T>::MapLineSegments(TreeGrid* tg,std::string igmfilename,std::string le
          else
          {
             //Output some lines of 0's upto the end of the level3grid
-            for(int i=0;i<(int)((grid->TopLeftY()-grid->BottomRightY())/grid->PixelSizeY());i++)
+            for(int i=0;i<static_cast<int>(round((grid->TopLeftY()-grid->BottomRightY())/grid->PixelSizeY()));i++)
             {
                number_of_lines_written=WriteBuffer();
             }
@@ -592,10 +592,10 @@ void Map<T>::MapLineSegments(TreeGrid* tg,std::string igmfilename,std::string le
       }
 
       //Buffer offset for outputting segment 0 to shift the buffer from segment position to level3grid position in fillgrid
-      int buffoffset=(int)((linesegment->segmentinfo->TopLeftX()-grid->TopLeftX())/grid->PixelSizeX());
+      int buffoffset=static_cast<int>(round((linesegment->segmentinfo->TopLeftX()-grid->TopLeftX())/grid->PixelSizeX()));
 
       //Need a row offset to add onto segment to get into level3 grid row values
-      int rowoffset=(int)((grid->TopLeftY()-linesegment->segmentinfo->TopLeftY())/grid->PixelSizeY());
+      int rowoffset=static_cast<int>(round(((grid->TopLeftY()-linesegment->segmentinfo->TopLeftY())/grid->PixelSizeY())));
       Logger::Debug("Using a row offset of "+ToString(rowoffset)+" and a buffoffset of "+ToString(buffoffset)); 
 
       //linesegment->outline->WriteEdge("edges.txt");
@@ -614,8 +614,9 @@ void Map<T>::MapLineSegments(TreeGrid* tg,std::string igmfilename,std::string le
             perccount+=10.0/nsegments;
             Logger::Log("Approximate percent complete: "+ToString((int)perccount));
          }
+
          //Skip if out of bounds of the level3 grid
-         if((rc.row < 0)||(rc.row >= (long)grid->NumRows()))
+         if((rc.row < 0)||(rc.row >= static_cast<long>(grid->NumRows())))
             continue;
 
          //Fill in the array with the edge points
@@ -651,15 +652,16 @@ bounds[1]=*(colbounds.end()-1);
             //Check if they are in limits and update appropriately
             if(bounds[0] < 0)
                bounds[0]=0;
-            if(bounds[1] >= (long)grid->NumCols())
+            if(bounds[1] >= static_cast<long>(grid->NumCols()))
                bounds[1]=grid->NumCols()-1;
 
             //Set the values to -1 for "impossible" cases - this signifies we don't want to map the row, but still output a row of 0's
             if ((bounds[0] > bounds[1]) || (bounds[1] < 0))
             {
                //Dont think we need the -1 case anymore so continue-ing instead
-               //bounds[0]=bounds[1]=-1;
-               continue;
+               bounds[0]=0;
+               bounds[1]=-1;
+               //continue;
             }
 
             Logger::Debug("Mapping grid row: "+ToString(rc.row)+" between columns: "+ToString(bounds[0])+" "+ToString(bounds[1]));
@@ -700,7 +702,7 @@ bounds[1]=*(colbounds.end()-1);
                }
 
                //Only insert a value into the buffer if col < number of columns of grid
-               if(col < (long)grid->NumCols())
+               if(col < static_cast<long>(grid->NumCols()))
                {
                   interpolator->SetL3Pos(&xy); //the interpolator may need to know the lev3 pixel position in X,Y
                   FillPixel(0,col,dp,da);
@@ -728,15 +730,21 @@ bounds[1]=*(colbounds.end()-1);
             if((linesegment->segmentinfo->TopLeftY() - row*grid->PixelSizeY() <= grid->TopLeftY())
                &&(linesegment->segmentinfo->TopLeftY() - row*grid->PixelSizeY() >= grid->BottomRightY()))
             {
+               Logger::Debug("WRITING: "+ToString(linesegment->segmentinfo->TopLeftY())+" "+ToString(row)+" "+ToString(grid->PixelSizeY())+" "+ToString(grid->TopLeftY())+" "+ToString(grid->BottomRightY()));
                number_of_lines_written=WriteBuffer();
             }
+            else
+               Logger::Debug("NOT WRITING: "+ToString(linesegment->segmentinfo->TopLeftY())+" "+ToString(row)+" "+ToString(grid->PixelSizeY())+" "+ToString(grid->TopLeftY()));
          }
          else//write out sections of the buffer - beware bounds are changed by this function
          {
             //need to set bounds to min/max here - else implement a loop to write data for each section of bounds.
             //assuming buffer is always reset to 0s then it is fine to output between min/max bounds.
             bounds[0]=lowerbound;
-            bounds[1]=upperbound;//bounds[1] is already equal to this but put here to make it clearer whats going on
+            if(upperbound!=-1)
+               bounds[1]=upperbound;//bounds[1] is already equal to this but put here to make it clearer whats going on
+            else
+               bounds[1]=grid->NumCols()-1;
 
             WriteBuffer(bounds,linesegment->segmentinfo,rc.row);
          }

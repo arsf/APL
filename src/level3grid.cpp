@@ -16,12 +16,12 @@ const double EPSILON=0.0001;
 //------------------------------------------------------------------------
 //Constructor taking min/max X and Y and pixel size
 //------------------------------------------------------------------------
-Level3GridInfo::Level3GridInfo(double minX, double minY, double maxX, double maxY,double psx,double psy,std::string bandlist)
+Level3GridInfo::Level3GridInfo(double minX, double minY, double maxX, double maxY,double psx,double psy,std::string bandlist,bool round)
 {
-   double tlX=minX-psx; //add on a pixel offset
-   double tlY=maxY+psy; //add on a pixel offset
-   double brX=maxX+psx;
-   double brY=minY-psy;
+   double tlX=minX;//-psx/2.0; //add on a half pixel offset
+   double tlY=maxY;//+psy/2.0; //add on a half pixel offset
+   double brX=maxX;//+psx/2.0;
+   double brY=minY;//-psy/2.0;
 
    pixelsizeX=psx;
    pixelsizeY=psy;
@@ -33,22 +33,40 @@ Level3GridInfo::Level3GridInfo(double minX, double minY, double maxX, double max
    //but also such that nrows and ncols will still be correct
    //remember that pix size could be a fraction so rounding to integer is not advisable
    //eg lat/lon grid with 0.00001 pix size, dont want to round 12.34567 to 12.0
-   double rounded=(int)(tlY/pixelsizeY)*pixelsizeY;
-   if(tlY-rounded<0.5*pixelsizeY)
-      tlY=rounded;    
-   else
-      tlY=rounded+pixelsizeY;
+   if(round)
+   {
+      //Do not round anymore - just expand since we no longer add on a pixel offset prior to this
+      //double rounded=(int)(tlY/pixelsizeY)*pixelsizeY;
+      //if(tlY-rounded<0.5*pixelsizeY)
+      //   tlY=rounded;    
+      //else
+      //   tlY=rounded+pixelsizeY;
+      //
+      //rounded=(int)(tlX/pixelsizeX)*pixelsizeX;
+      //if(tlX-rounded<0.5*pixelsizeX)
+      //   tlX=rounded;    
+      //else
+      //   tlX=rounded+pixelsizeX;
+      double truncated=(int)(tlY/pixelsizeY)*pixelsizeY;
+      if(tlY>0)
+         tlY=truncated+pixelsizeY;
+      else
+         tlY=truncated;
 
-   rounded=(int)(tlX/pixelsizeX)*pixelsizeX;
-   if(tlX-rounded<0.5*pixelsizeX)
-      tlX=rounded;    
-   else
-      tlX=rounded+pixelsizeX;
+      truncated=(int)(tlX/pixelsizeX)*pixelsizeX;
+      if(tlX >0)
+         tlX=truncated;
+      else
+         tlX=truncated-pixelsizeX;
+   }
+
+   //Test to see if this solves a problem. Update brX,brY to be tlX+m*pixelsizeX, tly-n*pixelsizeY
+   nrows=(unsigned int)ceil(fabs(tlY-brY)/pixelsizeY);//+1;
+   ncols=(unsigned int)ceil(fabs(brX-tlX)/pixelsizeX);//+1;
+   brY=tlY-nrows*pixelsizeY;
+   brX=tlX+ncols*pixelsizeX;
 
    bounds=new Area(tlX,brX,brY,tlY);
-
-   nrows=(unsigned int)ceil(fabs(tlY-minY)/pixelsizeY)+1;
-   ncols=(unsigned int)ceil(fabs(maxX-tlX)/pixelsizeX)+1;
 
    nbands=GetNumberOfItemsFromString(strBandList," ");
    bands=new unsigned int[nbands];   
@@ -185,12 +203,12 @@ Level3Grid::Level3Grid(Level3GridInfo* gi)
 //------------------------------------------------------------------------
 // Construct a level 3 grid from a defined output area
 //------------------------------------------------------------------------
-Level3Grid::Level3Grid(double output_pixel_sizeX,double output_pixel_sizeY,std::string bandlist,Area* outputrect)
+Level3Grid::Level3Grid(double output_pixel_sizeX,double output_pixel_sizeY,std::string bandlist,Area* outputrect,bool round)
 {
    if(outputrect != NULL)
    {
       //Create the grid info object
-      info=new Level3GridInfo(outputrect->MinX(),outputrect->MinY(),outputrect->MaxX(),outputrect->MaxY(),output_pixel_sizeX,output_pixel_sizeY,bandlist);
+      info=new Level3GridInfo(outputrect->MinX(),outputrect->MinY(),outputrect->MaxX(),outputrect->MaxY(),output_pixel_sizeX,output_pixel_sizeY,bandlist,round);
    }
    else
    {

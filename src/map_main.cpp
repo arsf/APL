@@ -209,6 +209,11 @@ int main(int argc, char* argv[])
    //value to set as no data
    double nodata_value=0;
 
+   //should we round the top left corner of level 3 grid to be a multiple of pixel size
+   //this will be true when using the IGM to define the treegrid (i.e. when using all data)
+   //and false when using the -area flag to specify an output region
+   bool TOROUND=false;
+
    //Filename for rowcol mapping file if requested
    std::string strRowColMapFilename="";
 
@@ -605,7 +610,7 @@ int main(int argc, char* argv[])
 
             //Get number of lines of level1 file to check against
             BinFile tmp(strLev1File); 
-            unsigned int l1lines=StringToUINT(tmp.FromHeader("lines"));
+            int l1lines=StringToINT(tmp.FromHeader("lines"));
             tmp.Close();
 
             //Loop through the list to get the scans that will be ignored
@@ -860,7 +865,10 @@ int main(int argc, char* argv[])
 
       //If user area is undefined - define it as the full tree area to pass to the mapper
       if(user_area==NULL)
+      {
          user_area=fulltree;
+         TOROUND=true;
+      }
    }
    catch(BinaryReader::BRexception e)
    {
@@ -914,25 +922,25 @@ int main(int argc, char* argv[])
       switch(intype)
       {     
       case 1:// byte data
-         map=new Map<char>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<char>(nodata_value));
+         map=new Map<char>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<char>(nodata_value),TOROUND);
          break;
       case 2://signed 16bit integer data
-         map=new Map<int16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<int16_t>(nodata_value));
+         map=new Map<int16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<int16_t>(nodata_value),TOROUND);
          break;
       case 3://signed 32bit integer byte data
-         map=new Map<int32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<int32_t>(nodata_value));
+         map=new Map<int32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<int32_t>(nodata_value),TOROUND);
          break;
       case 4://float32 data
-         map=new Map<float>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<float>(nodata_value));
+         map=new Map<float>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<float>(nodata_value),TOROUND);
          break;
       case 5:// double data
-         map=new Map<double>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<double>(nodata_value));
+         map=new Map<double>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<double>(nodata_value),TOROUND);
          break;
       case 12://16-bit unsigned short int data
-         map=new Map<uint16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint16_t>(nodata_value));
+         map=new Map<uint16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint16_t>(nodata_value),TOROUND);
          break; 
       case 13://32-bit unsigned int data
-         map=new Map<uint32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint32_t>(nodata_value));
+         map=new Map<uint32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint32_t>(nodata_value),TOROUND);
          break; 
       default:
          throw "Unrecognised data type in level 1 file. Cannot create a map of this data type. Got: "+ToString(intype);
@@ -1010,25 +1018,26 @@ int main(int argc, char* argv[])
 
    try
    {
-      //Send a warning if the maximum interpolation distance is rather large - only do for no geographic tree grids as maxinterpdist is always in metres now
-      if((!tg->IsGeographic())&&(maxinterpdist > 2*sqrt(tg->SizeX()*tg->SizeX() + tg->SizeY()*tg->SizeY())))
-      {
-         Logger::Warning("Maximum interpolation distance is large compared to pixel spacing [approx nadir pixel spacing: "+ToString(0.2*sqrt(tg->SizeX()*tg->SizeX() + tg->SizeY()*tg->SizeY()))+"], maybe this is a mistake?");
-      }
-
+      //Get nadir pixel separation (in metres)
+      double xsep=0,ysep=0;
+      tg->GetAveragePixelSeparationMetres(xsep,ysep);
       //Get a default value for the maxinterpdist if required (if maxinterpdist is currently -ve)
       if(maxinterpdist <=0)
       {
-         //Use a value of three nadir pixel separation - this is 0.6* because SizeX/Y are 5* single separation
-         double xsep=0,ysep=0;
-         tg->GetAveragePixelSeparationMetres(xsep,ysep);
+         //Use a value of three times nadir pixel separation
          maxinterpdist=3*sqrt(xsep*xsep+ysep*ysep);
          //maxinterpdist=0.6*sqrt(tg->SizeX()*tg->SizeX() + tg->SizeY()*tg->SizeY());
-         Logger::Log("Will use a default value for maximum interpolation of three times the average separation of a nadir pixel. This is: "+ToString(maxinterpdist));
+         Logger::Log("Will use a default value for maximum interpolation of three times the average separation of a nadir pixel. This is: "+ToString(maxinterpdist)+" metres.");
       }
 
-      //Warn if pixel size looks vastly incorrect - use a (randomly picked) value of 1000
-      if((Xpixelsize > maxinterpdist*1000) || (Ypixelsize > maxinterpdist*1000))
+      //Send a warning if the maximum interpolation distance is rather large - only do for no geographic tree grids as maxinterpdist is always in metres now
+      if(maxinterpdist > 50*sqrt(xsep*xsep + ysep*ysep))
+      {
+         Logger::Warning("Maximum interpolation distance is large compared to pixel spacing [approx nadir pixel spacing: "+ToString(sqrt(xsep*xsep + ysep*ysep))+"], maybe this is a mistake?");
+      }
+
+      //Warn if pixel size looks vastly incorrect - use a (randomly picked) value of 5*TreeGrid cell size
+      if((Xpixelsize > 5*tg->SizeX()) || (Ypixelsize > 5*tg->SizeY()))
       {
          Logger::Warning("Given pixel size appears very large compared to data resolution of IGM file. Are you sure the pixel size is in the correct units for the IGM file?");
       }
