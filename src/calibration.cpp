@@ -8,6 +8,9 @@
 //If not, please contact arsf-processing@pml.ac.uk 
 //-------------------------------------------------------------------------
 
+#include <cmath>
+#include <typeinfo>
+
 #include "calibration.h"
 //-------------------------------------------------------------------------
 // Constructor for data object taking size of array 
@@ -152,7 +155,6 @@ void Data::TransformArrays(const unsigned int bands, const unsigned int samples,
    }
 }
 
-
 //-------------------------------------------------------------------------
 // Calibration constructor 
 //-------------------------------------------------------------------------
@@ -160,18 +162,76 @@ Calibration::Calibration(Specim* sen,std::string calFile)
 {
    //Assign variables
    sensor=sen;
+   thissubsensor=0;
    calibrationFilenamePrefix=calFile;
+   badpixels=NULL;
 
-   //Get size of 1 line (all bands) of data
-   unsigned int nb=StringToUINT(sensor->br->FromHeader("bands"));
-   unsigned int ns=StringToUINT(sensor->br->FromHeader("samples"));
-   unsigned long size=nb*ns;
-
-   //Create new data object of correct size
-   data=new Data(size);
+   if(CheckSensorID(FENIX,this->sensor->SensorID()))
+   {      
+      //Get size of 1 line (all bands) of data
+      unsigned int vnb=dynamic_cast<Fenix*>(sensor)->NumBandsVnir();
+      unsigned int snb=dynamic_cast<Fenix*>(sensor)->NumBandsSwir();
+      unsigned int ns=sensor->NumSamples();
+      unsigned long sizevnir=vnb*ns;
+      unsigned long sizeswir=snb*ns;
+      //Create new data objects of correct size
+      numofsensordata=2;
+      sensordata=new Data*[numofsensordata];
+      sensordata[0]=new Data(sizevnir);
+      sensordata[1]=new Data(sizeswir);
+      sensorbandmap=new std::map<int,int>[2];
+      sensorrevbandmap=new std::map<int,int>[2];
+      //Set to subsensor 0 by default
+      data=sensordata[0];
+      bandmap=&(sensorbandmap[0]);
+      revbandmap=&(sensorrevbandmap[0]);
+   }
+   else
+   {
+      //Get size of 1 line (all bands) of data
+      unsigned int nb=sensor->NumBands();
+      unsigned int ns=sensor->NumSamples();
+      unsigned long size=nb*ns;
+      //Create new data object of correct size
+      numofsensordata=1;
+      sensordata=new Data*[numofsensordata];
+      sensordata[0]=new Data(size);
+      sensorbandmap=new std::map<int,int>[1];
+      sensorrevbandmap=new std::map<int,int>[1];
+      //Set to subsensor 0 (as it is the only one)
+      data=sensordata[0];
+      bandmap=sensorbandmap;
+      revbandmap=sensorrevbandmap;
+   }
 
    //If mask is requested - initialise it - always do this?
    InitialiseMask();
+}
+
+void Calibration::ChangeSubSensor(unsigned int sensorindex)
+{
+   //If only one subsensor then return
+   if(numofsensordata==1)
+      return;
+   //Else update to the alternative
+   if(sensorindex < numofsensordata)
+   {
+      if(sensorindex==0)
+         dynamic_cast<Fenix*>(sensor)->SetUpFenixFor(VNIR);
+      else if (sensorindex==1)
+         dynamic_cast<Fenix*>(sensor)->SetUpFenixFor(SWIR);
+      else
+         throw "Calibration is only set up for Fenix with 2 subsensors";
+
+      data=sensordata[sensorindex];
+      subsensorlowerband=dynamic_cast<Fenix*>(sensor)->SubSenLowerBand();
+      bandmap=&(sensorbandmap[sensorindex]);
+      revbandmap=&(sensorrevbandmap[sensorindex]);
+      thissubsensor=sensorindex;
+   }
+   else
+      throw "Sensorindex in changesubsensor is greater than number of sensors: "+ToString(sensorindex);
+
 }
 
 //-------------------------------------------------------------------------
@@ -180,13 +240,15 @@ Calibration::Calibration(Specim* sen,std::string calFile)
 void Calibration::InitialiseMask()
 {
    //If mask is requested - initialise it
-   data->InitialiseMask();
+   for(unsigned int i=0;i<numofsensordata;i++)
+      sensordata[i]->InitialiseMask();
 }
 
 void Calibration::InitialiseBadPixMethod()
 {
    //If mask is requested - initialise it
-   data->InitialiseBadPixMethod();
+   for(unsigned int i=0;i<numofsensordata;i++)
+      sensordata[i]->InitialiseBadPixMethod();
 }
 
 //-------------------------------------------------------------------------
@@ -195,7 +257,8 @@ void Calibration::InitialiseBadPixMethod()
 void Calibration::InitialiseFodis()
 {
    //If fodis is requested - initialise it
-   data->InitialiseFodis();
+   for(unsigned int i=0;i<numofsensordata;i++)
+      sensordata[i]->InitialiseFodis();
 }
 
 //-------------------------------------------------------------------------
@@ -203,8 +266,20 @@ void Calibration::InitialiseFodis()
 //-------------------------------------------------------------------------
 Calibration::~Calibration()
 {
+   if(sensordata!=NULL)
+   {
+      for(unsigned int s=0;s<numofsensordata;s++)
+         delete sensordata[s];
+   }
+   delete sensordata;
+   delete[] sensorbandmap;
+   delete[] sensorrevbandmap;
+
+   if(badpixels!=NULL)
+      delete[] badpixels;
+
    if(data!=NULL)
-      delete data;
+      data=NULL;
    if(sensor!=NULL)
       sensor=NULL;
 }
@@ -219,6 +294,7 @@ void Calibration::TestCalfile()
 
    std::string calibrationFilename=calibrationFilenamePrefix + ".cal";
    Logger::Log("Reading calibration file: "+calibrationFilename);
+   Logger::Warning("Note that integration time of calibration file is ignored - assume it relates to a value of 1.0.");
    BinFile calin(calibrationFilename);
 
    //Get dimensions of the file - these are likely eagle: 1024,1,1024 or hawk: 320,1,256
@@ -273,7 +349,12 @@ void Calibration::TestCalfile()
       wl_cal[icount]=static_cast<float>(StringToDouble(calin.FromHeader("Wavelength",icount))); //convert to double (cast as float)
    }
 
-   CheckCalWavelengths(wl_cal,numwl_cal);
+   for(unsigned int subsensor=0;subsensor<numofsensordata;subsensor++)
+   {
+      Logger::Log("Checking calibration wavelengths for subsensor: "+ToString(subsensor));
+      ChangeSubSensor(subsensor);
+      CheckCalWavelengths(wl_cal,numwl_cal);
+   }
    
    //Close the Bil reader
    calin.Close();
@@ -281,6 +362,56 @@ void Calibration::TestCalfile()
    delete[] wl_cal;
 }
 
+//-------------------------------------------------------------------------
+// Function to get the ratio of binning values raw : cal
+//-------------------------------------------------------------------------
+unsigned int Calibration::GetBinningRatio(std::string bintype)
+{
+   std::string calibrationFilename=calibrationFilenamePrefix+".cal";
+   BinFile calfile(calibrationFilename);
+
+   //Need to also take into account if calibration file has been binned (such as with FENIX)
+   unsigned int calbinning=0;
+   float calratio=0;
+   if(bintype.compare("spectral")==0)
+   {
+      if(data==sensordata[0])
+         calbinning=StringToUINT(TrimWhitespace(calfile.FromHeader("binning",0).c_str()));
+      else if(data==sensordata[1])
+         calbinning=StringToUINT(TrimWhitespace(calfile.FromHeader("binning2",0).c_str()));
+      //Instead of just using the raw data binning values - we use a ratio of raw/cal
+      calratio=(float)sensor->SpectralBinning() / calbinning;
+   }
+   else if(bintype.compare("spatial")==0)
+   {
+      if(data==sensordata[0])
+         calbinning=StringToUINT(TrimWhitespace(calfile.FromHeader("binning",1).c_str()));
+      else if(data==sensordata[1])
+         calbinning=StringToUINT(TrimWhitespace(calfile.FromHeader("binning2",0).c_str()));
+      //Instead of just using the raw data binning values - we use a ratio of raw/cal
+      calratio=(float)sensor->SpatialBinning() / calbinning;
+   }
+   else
+   {
+      throw "Unrecognised binning type in GetBinningRatio: "+bintype;
+   }
+
+   //The calratio should always be an integer if the two files are compatible. If less than 1 then it means
+   //that the cal file has been binned too far to use for this raw data
+
+   //Check there are no less than 1 ratios
+   if(calratio < 1)
+   {
+      throw "Calibration file has a binning higher than the raw data file - the calibration file is therefore not suitable for use.";
+   }
+   //Check that the ratios are integers
+   else if(floor(calratio)!=calratio)
+   {
+      throw "Ratio of raw:calibration binning is not an integer.\nThis suggests some odd binnings and that the calibration file may be unsuitable for the raw data.";
+   }
+   //As these are integer values we'll store them as ints 
+   return static_cast<unsigned int>(calratio);  
+}
 
 //-------------------------------------------------------------------------
 //Function to check the calibration file and see if it is suitable for the raw data
@@ -293,10 +424,8 @@ void Calibration::CheckCalWavelengths(float* const wl_cal, const unsigned int nu
    //The returned value is the number of agreements between raw and cal wavelengths
    unsigned int numwl_raw=0;
    //Need to get the number of wavelength entries
-   while(sensor->br->FromHeader("Wavelength",numwl_raw).compare("")!=0)
-   {
-      numwl_raw++;
-   }
+   std::string rawwaves=TrimWhitespace(sensor->bin->GetFromFile("Wavelength"));
+   numwl_raw=GetNumberOfItemsFromString(rawwaves,";");
    if(numwl_raw==0)
    {
       //No entries....error
@@ -304,8 +433,10 @@ void Calibration::CheckCalWavelengths(float* const wl_cal, const unsigned int nu
    }
 
    unsigned int numagree=0;//counter for number of agreeing wavelengths
-   //The below should give an integer number so test it
-   float numbinnedcal=numwl_cal / sensor->SpectralBinning();
+
+   //The below should give an integer number so test it - we use the ratio of spectral binnings incase the cal file is binned too
+   unsigned int specbinratio=GetBinningRatio("spectral");
+   float numbinnedcal=numwl_cal / specbinratio;
 
    if(numbinnedcal - int(numbinnedcal) != 0)
       throw "Binned calibration data is not an integer value. This is not good. Num wl: "+ToString(numwl_cal)+" spectral binning: "+ToString(sensor->SpectralBinning());
@@ -317,9 +448,8 @@ void Calibration::CheckCalWavelengths(float* const wl_cal, const unsigned int nu
    wl_raw=new float[numwl_raw];//create array for raw wavelengths (per band)
    for(unsigned int icount=0;icount<numwl_raw;icount++)
    {
-      wl_raw[icount]=static_cast<float>(StringToDouble(sensor->br->FromHeader("Wavelength",icount))); //convert to double (cast as float)
+      wl_raw[icount]=static_cast<float>(StringToDouble(GetItemFromString(rawwaves,icount,';'))); //convert to double (cast as float)
    }
-
 
    //Create a new array to hold the binned wavelengths
    float* binnedcal=new float[int(numbinnedcal)];
@@ -328,11 +458,11 @@ void Calibration::CheckCalWavelengths(float* const wl_cal, const unsigned int nu
    for(unsigned int j=0;j<numbinnedcal;j++)
    {
       binnedcal[j]=0;
-      for(unsigned int i=0;i<sensor->SpectralBinning();i++)
+      for(unsigned int i=0;i<specbinratio;i++)
       {
-         binnedcal[j]=binnedcal[j]+wl_cal[sensor->SpectralBinning()*j + i];
+         binnedcal[j]=binnedcal[j]+wl_cal[specbinratio*j + i];
       }
-      binnedcal[j]=binnedcal[j] / sensor->SpectralBinning();
+      binnedcal[j]=binnedcal[j] / specbinratio;
    }
 
    //We now have the binned wavelength values...assuming identical fwhm (bandwidths actually)
@@ -348,8 +478,8 @@ void Calibration::CheckCalWavelengths(float* const wl_cal, const unsigned int nu
          //Check if raw wavelength is within +/- searchbound of the binned calibration wavelengths since exact floating point is dangerous
          if((wl_raw[w]<=binnedcal[iterator]+ searchbound)&&(wl_raw[w]>=binnedcal[iterator] - searchbound))
          {
-            bandmap[w]=iterator; //maps raw band 'w' to binned calibration band 'iterator'
-            revbandmap[iterator]=w;//reverse mapping from binned calibration band to raw band
+            (*bandmap)[w]=iterator; //maps raw band 'w' to binned calibration band 'iterator'
+            (*revbandmap)[iterator]=w;//reverse mapping from binned calibration band to raw band
 
             numagree++;//increase the number of raw/cal agreements
             break; //break out of the while loop
@@ -385,7 +515,7 @@ void Calibration::CheckCalWavelengths(float* const wl_cal, const unsigned int nu
 //-------------------------------------------------------------------------
 void Calibration::ReadLineOfRaw(unsigned int line)
 {
-   sensor->br->ReadlineToDoubles(data->Image(),line);
+   sensor->bin->ReadlineToDoubles(data->Image(),line);
 }
 
 //-------------------------------------------------------------------------
@@ -402,39 +532,60 @@ void Calibration::InitialiseDarkFrames(std::string darkfile)
 
       unsigned int nsamples=StringToUINT(dark.FromHeader("samples"));
       unsigned int nbands=StringToUINT(dark.FromHeader("bands"));
-      if(data->ArraySize() != nsamples*nbands)
+      //We should sum all subsensor array sizes before checking against dark file array sizes
+      uint64_t sumarraysize=0;
+      for(unsigned int i=0;i<numofsensordata;i++)
+      {
+         ChangeSubSensor(i);
+         sumarraysize += data->ArraySize();
+      }
+
+      if(sumarraysize != nsamples*nbands)
       {
          throw "Number of samples or bands of dark file disagree's with raw file. Cannot use this dark file and raw file together.";
       }
    }
-   else if(sensor->br->GetNumDarkFrames()==0)
+   else if(sensor->GetNumDarkFrames()==0)
    {
       //No dark frames in file and no external file given - force exit
       throw "No dark frames found in file and no external dark file given - will not proceed. Use -NODARK on commandline to override.";
    }
 
    Logger::Log("\nStarting dark frame analysis...");
-   data->InitialiseDarkFrames();
-
-   double* mean=NULL;
-   double* stdev=NULL;
-
-   mean=new double[sensor->NumBands()*sensor->NumSamples()];
-   stdev=new double[sensor->NumBands()*sensor->NumSamples()];
-
-   sensor->br->AverageAllDarkFrames(mean,darkfile);
-   sensor->br->DarkFramesStdDeviation(stdev,mean,darkfile);
-   sensor->br->AverageRefinedDarkFrames(data->AverageDark(),stdev,mean,darkfile);
-
-   //Scale the darkframes if scalar is not = 1 - actually will exit now
-   if(sensor->br->DarkScalar() != 1)
+   //We want to do this for all subsensors here
+   for(unsigned int i=0;i<numofsensordata;i++)
    {
-      throw "Dark frames have a different integration time to 'light' frames. Please choose appropriate dark frames or scale your dark frames.";
-   }
+      ChangeSubSensor(i);
+      data->InitialiseDarkFrames();
 
-   Logger::Log("Finished dark frame analysis...\n");
-   delete[] mean;
-   delete[] stdev;
+      double* mean=NULL;
+      double* stdev=NULL;
+
+      mean=new double[data->ArraySize()];
+      stdev=new double[data->ArraySize()];
+
+      for(unsigned int looper=0;looper<data->ArraySize();looper++)
+      {
+         mean[looper]=stdev[looper]=0;
+      }
+
+      sensor->AverageAllDarkFrames(mean,darkfile,data->ArraySize(),i);
+      sensor->DarkFramesStdDeviation(stdev,mean,darkfile,data->ArraySize(),i);
+      sensor->AverageRefinedDarkFrames(data->AverageDark(),stdev,mean,darkfile,data->ArraySize(),i);
+
+      //Scale the darkframes if scalar is not = 1 - actually will exit now
+      if(sensor->DarkScalar() != 1)
+      {
+         throw "Dark frames have a different integration time to 'light' frames. Please choose appropriate dark frames or scale your dark frames. Scalar: "+ToString(sensor->DarkScalar());
+      }
+
+      Logger::Log("Finished dark frame analysis for sensor index "+ToString(i)+" ...\n");
+
+      delete[] mean;
+      mean=NULL;
+      delete[] stdev;
+      stdev=NULL;
+   }
 }
 
 //-------------------------------------------------------------------------
@@ -580,7 +731,6 @@ void Calibration::ApplyGains()
       if((data->Image()[ele]!=0)&&(data->Image()[ele]!=sensor->CalibratedMax()))
       {
          tempval=(data->Image()[ele]*data->Gains()[ele]*radmultiplier);//scale by the calibration multipliers
-
          if((tempval) >= sensor->CalibratedMax())
          {
             data->Image()[ele]=sensor->CalibratedMax(); // assign as an overflow
@@ -605,9 +755,13 @@ void Calibration::ReadBinAndTrimGains(double* const trimmedcal)
    unsigned int nlines=StringToUINT(calfile.FromHeader("lines"));
    unsigned int nbands=StringToUINT(calfile.FromHeader("bands"));
 
+   //Use the ratio of binnings rather than just the raw binning value
+   unsigned int specbinratio=GetBinningRatio("spectral");
+   unsigned int spatbinratio=GetBinningRatio("spatial");
+
    //Lets spectrally and spatially bin the data here.
-   unsigned int numbinnedband=nbands / sensor->SpectralBinning(); //the number of binned calibration bands
-   unsigned int numbinnedsamps=nsamps / sensor->SpatialBinning(); //the number of binned calibration samples
+   unsigned int numbinnedband=nbands / specbinratio; //the number of binned calibration bands
+   unsigned int numbinnedsamps=nsamps / spatbinratio; //the number of binned calibration samples
 
    //Check that the number of samples of the raw image agree with the binned cal samples. If not - exit
    if(numbinnedsamps!=sensor->NumSamples())
@@ -631,24 +785,23 @@ void Calibration::ReadBinAndTrimGains(double* const trimmedcal)
    for(unsigned int j=0;j<numbinnedband;j++)
    {
       samplecount=0;// counter for sample number of new array
-      for(unsigned int s=0;s<nsamps;s=s+sensor->SpatialBinning())//For each sample
+      for(unsigned int s=0;s<nsamps;s=s+spatbinratio)//For each sample
       {
          //Assign an index variable for clearer code
          binned_index=j*numbinnedsamps + samplecount;
-         //std::cout<<binned_index<<std::endl;
          binnedgains[binned_index]=0;//initialise to zero
-         for(unsigned int i=0;i<sensor->SpectralBinning();i++) // loop through the bands that will be binned for this cell
+         for(unsigned int i=0;i<specbinratio;i++) // loop through the bands that will be binned for this cell
          {
-            for(unsigned int p=0;p<sensor->SpatialBinning();p++) //loop throuhg the samples that will be binned for this cell
+            for(unsigned int p=0;p<spatbinratio;p++) //loop throuhg the samples that will be binned for this cell
             {
                //Sum up the values that will be binned into one of the new array cells
-               binnedgains[binned_index]=binnedgains[binned_index]+tmpgains[(j*sensor->SpectralBinning()+i)*nsamps + (s+p)];
+               binnedgains[binned_index]=binnedgains[binned_index]+tmpgains[(j*specbinratio+i)*nsamps + (s+p)];
             }
          }
 
          //Divide by spectralbin ^ 2 since the actual binned raw data is the sum of the binned bands not the mean of the binned bands.
          //Similarly for spatial binning too.
-         binnedgains[binned_index]=binnedgains[binned_index] / ( (sensor->SpectralBinning()*sensor->SpectralBinning()) * (sensor->SpatialBinning() * sensor->SpatialBinning()) );
+         binnedgains[binned_index]=binnedgains[binned_index] / ( (specbinratio * specbinratio) * (spatbinratio * spatbinratio) );
 
          samplecount++;//increase onto next sample of array
       }
@@ -662,7 +815,7 @@ void Calibration::ReadBinAndTrimGains(double* const trimmedcal)
    {
       for(unsigned int s=0;s<sensor->NumSamples();s++) //for each sample 
       {
-         trimmedcal[b*sensor->NumSamples() + s] = binnedgains[bandmap[b]*sensor->NumSamples() + s];
+         trimmedcal[b*sensor->NumSamples() + s] = binnedgains[(*bandmap)[b]*sensor->NumSamples() + s];
       }
    }   
 
@@ -686,16 +839,23 @@ void Calibration::FlagPixels()
       {
          p=band*sensor->NumSamples() + sample;
          //This is a pre-calibration test of the raw data - will not work for post calibrated data
-         if((data->Image()[p] > sensor->RawMax())&&(data->Image()[p]!=sensor->CalibratedMax())&&((band!=0)&&(sample!=0)))
-         {
-            throw std::string("Image contains data greater than the raw maximum. This should not happen...but has...Check the raw data at band,sample:")
-                              +ToString(band)+" "+ToString(sample)+" value: "+ToString(data->Image()[p]);
-         }
-         else if((band==0)&&((sample==0)||(sample==1)))
+//         if((data->Image()[p] > sensor->RawMax())&&(data->Image()[p]!=sensor->CalibratedMax())&&((band!=0)&&(sample!=0)))
+//         {
+//            std::string error=std::string("Image contains data greater than the raw maximum. This should not happen...but has...Check the raw data at band,sample:")
+//                              +ToString(band)+" "+ToString(sample)+" value: "+ToString(data->Image()[p]);
+//            //throw error;
+//            Logger::Warning(error);
+//         }
+         if((band==0)&&((sample==0)||(sample==1)))
          {
             //this is the frame counting ccd pixel or the 0 pixel next to it
-            data->Image()[p]=0; 
-            AssignMaskValue(p,sensor->Badpixel);   
+            //  ... unless it is a fenix subsensor 1(SWIR). So check if the lower band 
+            // limit is 0 - meaning that band=0 truely means band 0 of the raw file
+            if(sensor->LowerBandLimit()==0)
+            {
+               data->Image()[p]=0; 
+               AssignMaskValue(p,sensor->Badpixel);   
+            }
          }
          else if(data->Image()[p] == sensor->RawMax())
          {
@@ -726,21 +886,36 @@ void Calibration::FlagPixels()
       }
    }
 
-   //Flag "bad pixels" from the bad pixel file for Hawk
-   if(CheckSensorID(HAWK,sensor->SensorID()))
+   //Flag "bad pixels" from the bad pixel file - if no bad pixels this loop is essentially skipped
+   if((badpixels==NULL)&&(CheckSensorID(EAGLE,sensor->SensorID())))
    {
-      Hawk* hawk=dynamic_cast<Hawk*>(sensor);
-
-      for(unsigned int bp=0;bp<hawk->NumBadPixels();bp++) //loop through bad pixel array
+      //This is OK - Eagle doesn't have bad pixels
+   }
+   else if((badpixels==NULL)&&(calibrationFilenamePrefix.compare("")==0))
+   {
+      //No calibration file has been given - hence no bad pixel file
+      Logger::WarnOnce("As no calibration file has been given - will not be able to mask bad pixels.");
+   }
+   else if((badpixels==NULL)&&(!CheckSensorID(EAGLE,sensor->SensorID())))
+   {
+      //Other sensors use bad pixel files - throw exception
+      throw "Bad pixels array has not been declared. All sensors except Eagle should use a bad pixel file.";
+   }
+   else //badpixels is not null
+   {
+      for(unsigned int bp=0;bp<badpixels[thissubsensor].NumBadPixels();bp++) //loop through bad pixel array
       {
+         //Test to make sure band is in image range - since fenix band range is synthetic (i.e 0 -> x, 0 -> y and not 0 -> x+y)
          //Only mask if the band is in use in the raw data
-         if(hawk->BadPixels()[2*bp+1]!=hawk->BandNotInUse())
+         if(badpixels[thissubsensor].GetBadPixels()[2*bp+1]!=badpixels[thissubsensor].BandNotInUse())
          {
-            AssignMaskValue(hawk->BadPixels()[2*bp+1]*hawk->NumSamples()+ hawk->BadPixels()[2*bp],hawk->Badpixel);   
+            AssignMaskValue((badpixels[thissubsensor].GetBadPixels()[2*bp+1])*sensor->NumSamples()
+                            + badpixels[thissubsensor].GetBadPixels()[2*bp],sensor->Badpixel);   
            //Assign the detection method if ARSF bad pixel file
-            if((hawk->arsfbadpixelfiletype == true)&&(data->BadPixMethod()!=NULL))
+            if((badpixels[thissubsensor].arsfbadpixelfiletype == true)&&(data->BadPixMethod()!=NULL))
             {
-               data->BadPixMethod()[hawk->BadPixels()[2*bp+1]*hawk->NumSamples()+ hawk->BadPixels()[2*bp]] = hawk->BadPixelMethod()[bp];
+               data->BadPixMethod()[badpixels[thissubsensor].GetBadPixels()[2*bp+1]*sensor->NumSamples() 
+                                    + badpixels[thissubsensor].GetBadPixels()[2*bp]] = badpixels[thissubsensor].BadPixelMethod()[bp];
             }
          }
       } 
@@ -758,15 +933,15 @@ void Calibration::FlagPixels()
 }
 
 //-------------------------------------------------------------------------
-// Function to read in the bad pixel file for hawk data
+// Function to read in the bad pixel file for sensor data
 //-------------------------------------------------------------------------
 bool Calibration::ReadBadPixelFile()
 {
    //Currently we only do this for hawk but could potentially want to run
    //on other sensors too?
-   if(!CheckSensorID(HAWK,sensor->SensorID()))
+   if(CheckSensorID(EAGLE,sensor->SensorID()))
    {
-      Logger::Warning("Only apply bad pixels to Hawk data - skipping reading bad pixel file.");
+      Logger::Warning("Currently don't apply bad pixels to Eagle data - skipping reading bad pixel file.");
       return false;
    }
 
@@ -777,30 +952,15 @@ bool Calibration::ReadBadPixelFile()
       return false;
    }
 
-   Hawk* hawk=dynamic_cast<Hawk*>(sensor);
    std::string badfile=calibrationFilenamePrefix+".bad";
-   std::ifstream badin;
-   badin.open(badfile.c_str());
-   if(!badin.is_open())
+   badpixels=new BadPixels[numofsensordata];
+   for(unsigned int i=0;i<numofsensordata;i++)
    {
-      //Error opening file
-      throw "An error occured whilst opening the bad pixel calibration file - are you sure it exists?" + badfile;
+      ChangeSubSensor(i);
+      badpixels[i].SetUpBadPixels(badfile,*revbandmap);
+      Logger::Log("Number of bad pixels decoded from file: "+ToString(badpixels[i].NumBadPixels()));
    }
-   else
-   {
-      std::string tempstr="";
-      while(badin.good())
-      {
-         //store the bad pixels in a string stream object
-         std::getline(badin,tempstr);
-         hawk->badpixelstream<<tempstr<<std::endl; 
-      }
-      badin.close();
-      badin.clear();
 
-      //Now call a function to decode the file - i.e. interpret the data in the stringstream
-      hawk->DecodeBadPixel(revbandmap);
-   }  
    return true;
 }
 
@@ -842,9 +1002,9 @@ void Calibration::AssignMaskValue(const unsigned int ele,const Specim::MaskType 
 bool Calibration::AverageFodis()
 {
    //Only run this for Eagle sensors
-   if(!CheckSensorID(EAGLE,sensor->SensorID()))
+   if(sensor->fodis==NULL)
    {
-      Logger::Warning("Attempt to average FODIS for non-Eagle sensor - skipping in future.");
+      Logger::Warning("No FODIS defined in sensor object - skipping in future.");
       return false;
    }
    //Check that the fodis array exists
@@ -853,32 +1013,47 @@ bool Calibration::AverageFodis()
       throw "Error averaging the FODIS - fodis array has not been initialised.";
    }
 
-   Eagle* eagle=dynamic_cast<Eagle*>(sensor);
-   //Check that the Eagle fodis values are useable
-   if((eagle->LowerFodis()==eagle->UpperFodis())||(eagle->LowerFodis()>eagle->UpperFodis()))
+   //Check that the sensor fodis values are useable
+   if((sensor->fodis->LowerFodis()==sensor->fodis->UpperFodis())||(sensor->fodis->LowerFodis()>sensor->fodis->UpperFodis()))
    {
       Logger::Warning("Attempt to average FODIS for sensor without FODIS or with incorrect FODIS values in raw hdr file.");
       return false;      
    }
 
    double sum=0;
+   unsigned int numbertoaverageover=0;
    for(unsigned int band=0;band<sensor->NumBands();band++)   
    {
+      numbertoaverageover=0;
       //for each pixel of the fodis region for this line
-      for(unsigned int p=eagle->LowerFodis();p<eagle->UpperFodis();p++)
+      for(unsigned int p=sensor->fodis->LowerFodis();p<sensor->fodis->UpperFodis();p++)
       {
-         //Sum up the fodis pixels per band per line
-         sum=sum + data->Image()[band*eagle->NumSamples() + p]; 
+         if(data->Image()[band*sensor->NumSamples() + p] != 0)
+         {
+            //Sum up the fodis pixels per band per line
+            sum=sum + data->Image()[band*sensor->NumSamples() + p]; 
+            //Keep track of number of non-zero values  -only average over these
+            numbertoaverageover++;
+         }
       }
 
       //Average this value - note that FODIS array is the same size as
       //other arrays (nbands*nsamples) even though we're only interested
       //in the 1 sample per scan line.
-      sum=(sum / (eagle->UpperFodis()-eagle->LowerFodis()));
-      if(sum<eagle->CalibratedMax())
-         data->Fodis()[band*eagle->NumSamples()]=(sum);
+      if(numbertoaverageover!=0)
+      {
+         sum=(sum / numbertoaverageover);
+      }
       else
-         data->Fodis()[band*eagle->NumSamples()]=eagle->CalibratedMax();
+      {
+         Logger::Warning("There are no valid FODIS pixels to average - all have value 0 in band:"+ToString(band));
+         sum=0;
+      }
+
+      if(sum<sensor->CalibratedMax())
+         data->Fodis()[band*sensor->NumSamples()]=(sum);
+      else
+         data->Fodis()[band*sensor->NumSamples()]=sensor->CalibratedMax();
 
       //reset sum for next band iteration
       sum=0;  
@@ -901,10 +1076,10 @@ int Calibration::CheckFrameCounter(unsigned int start,unsigned int end)
       throw "Error in checkframecounter - start frame should be less than end frame.";
 
    //Get frame counter for frame start
-   double startcounter=sensor->br->ReadCell(0,start,0);
+   double startcounter=sensor->bin->ReadCell(0,start,0);
 
    //Get frame counter for frame end
-   double endcounter=sensor->br->ReadCell(0,end,0);
+   double endcounter=sensor->bin->ReadCell(0,end,0);
 
    return static_cast<int>(endcounter-startcounter);
 }
@@ -1005,5 +1180,389 @@ void Calibration::ReadQCFailureFile(std::string qcfailurefile)
    for(std::vector<Pair>::iterator it=sensor->qcfailures.begin();it!=sensor->qcfailures.end();it++)
    {
       Logger::Log(" "+ToString((*it).band)+" "+ToString((*it).sample));
+   }
+}
+
+
+//-------------------------------------------------------------------------
+// BadPixels constructor- SetUpBadPixels needs to be run independantly 
+//-------------------------------------------------------------------------
+BadPixels::BadPixels()
+{
+   badpixels=NULL;
+   badpixelmethod=NULL;
+   bpmethod_descriptor=NULL;
+   bandnotinuse=9999;
+}
+
+//-------------------------------------------------------------------------
+// BadPixels destructor
+//-------------------------------------------------------------------------
+BadPixels::~BadPixels()
+{
+   if(badpixels!=NULL)
+      delete[] badpixels;
+   if(badpixelmethod!=NULL)
+      delete[] badpixelmethod;
+   if(bpmethod_descriptor!=NULL)
+      delete[] bpmethod_descriptor;
+}
+
+//-------------------------------------------------------------------------
+// Set up the bad pixel object from a file and a band mapping map
+//-------------------------------------------------------------------------
+void BadPixels::SetUpBadPixels(std::string badpixelfilename,std::map<int,int> &revbandmap)
+{
+   std::ifstream badin;
+   badin.open(badpixelfilename.c_str());
+   if(!badin.is_open())
+   {
+      //Error opening file
+      throw "An error occured whilst opening the bad pixel calibration file - are you sure it exists?" + badpixelfilename;
+   }
+   else
+   {
+      std::string tempstr="";
+      while(badin.good())
+      {
+         //store the bad pixels in a string stream object
+         std::getline(badin,tempstr);
+         badpixelstream<<tempstr<<std::endl; 
+      }
+      badin.close();
+      badin.clear();
+
+      //Now call a function to decode the file - i.e. interpret the data in the stringstream
+      DecodeBadPixel(revbandmap);
+   }  
+}
+
+
+//-------------------------------------------------------------------------
+// Function to decode the bad pixel stringstream into an unsigned int array
+// requires the reverse band mapping from the calibration to identify 
+// non-used bands (i.e. map raw bands to calibration bands).
+// This version is for Specim Calibrated Bad Pixel files
+//-------------------------------------------------------------------------
+void BadPixels::DecodeSpecimBadPixels(std::map<int,int> revbandmap)
+{
+   //Bad pixel file is assumed to be in the following format
+   //1st line description , ccdsamples, ccdbands
+   //all other lines have 6 elements
+   //id bsample bband rsample rband GON
+
+   //id increase by 1 each time
+   //bsample,bband,rsample,rband describe the bad pixel and the pixel to replace it with
+   //we will just mask (set=0) rather than replace it
+   //GON ....who knows?
+
+   unsigned int id=0, bsample=0, bband=0, rsample=0, rband=0;
+   unsigned int previd=0;
+   std::string isgon="";
+   int bnew=0;
+   std::string tempstr;
+
+   //Get the first line
+   std::getline(badpixelstream,tempstr);
+
+   //read in the first id
+   badpixelstream>>id; 
+
+   //Loop through to check that the stringstream is as expected
+   //and get the number of bad pixels
+   while(badpixelstream.good())
+   {
+      //get info from stringstream
+      if(id!=previd+1)
+      {
+         //An error has occurred.
+         throw std::string("An error occurred decoding bad pixel file ... id does not increase by 1 in file at ID: ")+ToString(id);     
+      }
+
+      badpixelstream>>bsample;
+      badpixelstream>>bband;
+      badpixelstream>>rsample;
+      badpixelstream>>rband;
+      badpixelstream>>isgon;
+      if(isgon.compare("GON")!=0)
+      {
+         //An error has occurred...expected GON   
+         throw std::string("An error occurred decoding bad pixel file ... 6th word is not 'GON' at ID: ")+ToString(id);     
+      }
+      previd=id;
+      //get next id from next line
+      badpixelstream>>id;
+   }
+
+   //Number of bad pixels
+   nbadpixels=previd;
+
+   //Create an array of required size to store bad pixel ccd row/col
+   badpixels=new unsigned int[nbadpixels*2];
+   previd=0;
+   badpixelstream.clear();
+   badpixelstream.seekg(0,std::ios::beg);
+   std::getline(badpixelstream,tempstr);
+
+   badpixelstream>>id;//get first id
+
+   //Loop through the stream again, this time storing the bad pixels into the array
+   while(badpixelstream.good())
+   {
+      //get info from stringstream
+      if(id!=previd+1)
+      {
+         //An error has occurred. 
+         throw std::string("An error occurred decoding bad pixel file ... id does not increase by 1 in file at ID: ")+ToString(id);     
+      }
+      badpixelstream>>bsample;
+      badpixelstream>>bband;
+      badpixelstream>>rsample;
+      badpixelstream>>rband;
+      badpixelstream>>isgon;
+      if(isgon.compare("GON")!=0)
+      {
+         //An error has occurred...expected GON   
+         throw std::string("An error occurred decoding bad pixel file ... 6th word is not 'GON' at ID: ")+ToString(id);     
+      }
+      previd=id;
+
+      std::map<int,int>::iterator it;
+      it=revbandmap.find(bband-1);
+
+      if(it!=revbandmap.end())
+      {
+         //Convert bad pixel band number to raw band number
+         bnew=it->second;
+      }
+      else
+      {
+         //flag the band with a not in use flag, used later on when masking bad pixel raw data
+         bnew=bandnotinuse; 
+      }
+
+      badpixels[(id-1)*2+0]=bsample-1; //minus 1 to normalise between 0 and max-1
+      badpixels[(id-1)*2+1]=bnew; //no minus 1 because this is taken care of in the band mapping   
+
+      //read in next id   
+      badpixelstream>>id; 
+   }
+}
+
+//-------------------------------------------------------------------------
+// Function to decode the bad pixel stringstream into an unsigned int array
+// requires the reverse band mapping from the calibration to identify 
+// non-used bands (i.e. map raw bands to calibration bands).
+// This version is for ARSF Calibrated Bad Pixel files
+//-------------------------------------------------------------------------
+void BadPixels::DecodeARSFBadPixels(std::map<int,int> revbandmap)
+{
+   //It is assumed that the ARSF calibrated bad pixel files are
+   //referenced to 0 - i.e. the band and sample numbers run from 0->n-1
+   int id=0, bsample=0, bband=0;
+   int previd=-1;
+   int bnew=0;
+   std::string method;
+
+   std::string tempstr;
+   int nheaderlines=0;
+
+   //Get the first line and the number of headerlines to skip
+   std::getline(badpixelstream,tempstr);
+   tempstr=TrimLeadingChars(tempstr,"headerlines=");
+   nheaderlines=StringToINT(tempstr); 
+   if(nheaderlines==0)
+   {
+      //This means something has gone wrong somewhere
+       throw std::string("An error occurred decoding bad pixel file ... cannot get number of headerlines: ")+tempstr;          
+   }  
+
+   int method_counter=0;
+   //We have already read 1 line so read nheaderlines - 1 more
+   // and test if they are method descriptors
+   for(int i=0;i<nheaderlines-1;i++)
+   {
+      std::getline(badpixelstream,tempstr);
+      if(tempstr.find_first_of("method",0)==0)
+      {
+         method_counter++;
+      }
+   }
+
+   //We have found method_counter number of descriptors
+   Logger::Log("Will create method descriptors: "+ToString(method_counter));
+   bpmethod_descriptor=new std::string[method_counter];   
+
+   //read in the first id
+   badpixelstream>>id;
+
+   //Loop through to check that the stringstream is as expected
+   //and get the number of bad pixels
+   while(badpixelstream.good())
+   {
+      //get info from stringstream
+      if(id!=previd+1)
+      {
+         //An error has occurred.
+         throw std::string("An error occurred decoding bad pixel file ... id does not increase by 1 in file at ID: ")+ToString(id);     
+      }
+
+      badpixelstream>>bband;
+      badpixelstream>>bsample;
+      badpixelstream>>method;
+
+      previd=id;
+
+      //get next id from next line
+      badpixelstream>>id;
+   }
+
+   //Number of bad pixels
+   nbadpixels=previd+1; //+1 since previd referenced to 0 not 1
+
+   //Create an array of required size to store bad pixel ccd row/col
+   badpixels=new unsigned int[nbadpixels*2];
+   badpixelmethod=new unsigned char[nbadpixels];
+
+   //reset variables for reading in again
+   previd=-1;
+   badpixelstream.clear();
+   badpixelstream.seekg(0,std::ios::beg);
+   //We need to skip nheaderlines 
+   //Actually - we want to read in and store the method descriptors to output later
+   int meth=0;
+   for(int i=0;i<nheaderlines;i++)
+   {
+      std::getline(badpixelstream,tempstr);
+      //Test if line starts with method - these should be method descriptors
+      if(tempstr.find("method")==0)
+      {
+         if(meth >= method_counter)
+         {
+            throw "More bad pixel detection method descriptions have been detected than initially found.";
+         }
+         Logger::Log(" "+tempstr);
+         bpmethod_descriptor[meth]=tempstr;
+         meth++;
+      }
+   }
+
+   badpixelstream>>id;//get first id
+   std::map<int,int>::iterator it;
+
+   if(!badpixelstream.good() && (nbadpixels!=0))
+      throw "Bad pixel stream is not good - but it should be so fix the code.";
+
+   //Loop through the stream again, this time storing the bad pixels into the array
+   while(badpixelstream.good())
+   {
+      //get info from stringstream
+      if(id!=previd+1)
+      {
+         //An error has occurred. 
+         throw std::string("An error occurred decoding bad pixel file ... id does not increase by 1 in file at ID: ")+ToString(id);     
+      }
+      badpixelstream>>bband;
+      badpixelstream>>bsample;
+      badpixelstream>>method;
+
+      previd=id;
+      it=revbandmap.find(bband);
+
+      if(it!=revbandmap.end())
+      {
+         //Convert bad pixel band number to raw band number
+         bnew=it->second;
+      }
+      else
+      {
+         //flag the band with a not in use flag, used later on when masking bad pixel raw data
+         bnew=bandnotinuse; 
+      }
+
+      badpixels[(id)*2+0]=bsample; 
+      badpixels[(id)*2+1]=bnew;   
+
+      //Store the method as a char bit flag rather than actual method value
+      //Method is now a comma delimited string of methods e.g. A,B,E
+      //so loop through each method in string "method" and set all that apply
+      char meth='z';
+      badpixelmethod[id]=0;
+      for(size_t m=0;m<GetNumberOfItemsFromString(method,",");m++)
+      {
+         std::string strItem=GetItemFromString(method,m,',').c_str();
+         if(strItem.length() > 1)
+            throw "Expected bad pixel method to be 1 char length, I got: "+strItem;
+         else
+            strItem.copy(&meth,1);
+         switch(meth)
+         {
+         case 'A':   
+            if((badpixelmethod[id]&A) == 0) //check if A is set, if NOT then set it.
+               badpixelmethod[id]+=A;
+            break;
+         case 'B':
+            if((badpixelmethod[id]&B) == 0)
+               badpixelmethod[id]+=B;
+            break;
+         case 'C':
+            if((badpixelmethod[id]&C) == 0)
+               badpixelmethod[id]+=C;
+            break;
+         case 'D':
+            if((badpixelmethod[id]&D) == 0)
+               badpixelmethod[id]+=D;
+            break;
+         case 'E':
+            if((badpixelmethod[id]&E) == 0)
+               badpixelmethod[id]+=E;
+            break;
+         default:
+            throw std::string("Unrecognised bad pixel detection method in bad pixel file. Expected one of A,B,C,D,E but got: ")+method;
+         }
+      }
+
+      //read in next id   
+      badpixelstream>>id; 
+   }
+}
+
+//-------------------------------------------------------------------------
+// Function wrapper to decode the bad pixel stringstream into an unsigned 
+// int array. Calls the function method based on the stringstream info
+//-------------------------------------------------------------------------   
+void BadPixels::DecodeBadPixel(std::map<int,int> revbandmap)
+{
+   //The first line of ARSF and Specim bad pixel files differ
+   //ARSF: headerlines = x
+   //Specim: NERC_Hawk_BPR_NUC2_GON0.txt  320 256 (or something similar)
+   
+   //Get the first line
+   std::string tempstr;
+   std::getline(badpixelstream,tempstr);
+   
+   //Seek back to the start of the stream
+   badpixelstream.seekg(0,std::ios::beg);
+
+   //Test for suspected file type
+   if(tempstr.find("headerlines")!=std::string::npos)
+   {
+      //ARSF Calibrated file detected
+      Logger::Log("Detected ARSF calibrated bad pixel file.");
+      arsfbadpixelfiletype=true;
+      DecodeARSFBadPixels(revbandmap);
+   }
+   else if(tempstr.find("320 256")!=std::string::npos)
+   {
+      //Specim calibrated file detected
+      Logger::Log("Detected Specim calibrated bad pixel file.");
+      arsfbadpixelfiletype=false;
+      DecodeSpecimBadPixels(revbandmap);
+   }
+   else
+   {
+      //Unable to detect
+      Logger::Log(tempstr);
+      throw "Unable to detect bad pixel type - failed ARSF and Specim file type test.";
    }
 }

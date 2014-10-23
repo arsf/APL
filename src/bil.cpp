@@ -301,3 +301,77 @@ void BILReader::ReadlineToDoubles(double* const ddata,unsigned int line)
    delete[] chtmp;
 }
 
+//-------------------------------------------------------------------------
+//Read the BIL data that falls within a rectangular area defined by the lower left (ll)
+//and upper right (ur) coordinates (Usually here BIL file is a DEM)
+//-------------------------------------------------------------------------
+int BILReader::ReadRect(char* const chdata,const int minrow, const int maxrow,const int mincol,const int maxcol)
+{
+   if(numbands!=1)
+      throw "ReadRect should currently only be used for files with 1 band.";
+
+   //Check input parameters and throw exception if they are not in correct order
+   if ((maxrow < minrow) || (maxcol < mincol))
+      throw "Order of elements in BILReader.ReadRect should be llx,lly urx,ury. Min row/col is greater than max row/col.";
+
+   //Get the extent of the area in rows/cols
+   unsigned int numlines=(maxrow+1)-minrow;
+   unsigned int numsamps=(maxcol+1)-mincol;
+
+   //Convert these to byte positions within the DEM file and the
+   //number of bytes for each line to read. Then use bil->Readbytes
+   //methodology.
+   unsigned long int numofbytesperline=numsamps*GetDataSize();
+   DEBUGPRINT("Will read "<<numsamps<<" samples of data with size "<<GetDataSize()<<" bytes from "<<numlines<<" lines.")
+
+   //Loop through each of the lines reading in the required part, storing in chdata
+   for(unsigned int l=0;l<numlines;l++)
+   {
+      //For each line to read from - read in some data
+      ReadPartOfLine(&chdata[l*numofbytesperline],l+(unsigned int)minrow,(unsigned int)mincol,numsamps);
+   }
+
+   return 0;
+}
+
+//-------------------------------------------------------------------------
+//Read in a section nsamps long starting from sampleno of a given line from 
+//the dem and store in chdata array. chdata should be the size 
+//of nsamps * size of data (Usually here BIL file is a DEM)
+//-------------------------------------------------------------------------
+void BILReader::ReadPartOfLine(char* const chdata,const unsigned int lineno,const unsigned int sampleno,const unsigned int nsamps)
+{
+   if(this->IsGood() == false)
+   {
+      DEBUGPRINT("ReadPartOfLine has failed...stream not good.") 
+      this->brinfo<<"ReadPartOfLine has failed...stream not good."<<std::endl;   
+      throw BRexception(brinfo.str());
+   }
+
+   //DEBUG statement
+   DEBUGPRINT("Reading Part Of Line from BinaryFile..."<<nsamps<<" samples starting at sample "<<sampleno<<" of line "<<lineno);
+
+   //number of bytes that should be read from the file
+   uint64_t nbytestoread=(nsamps * GetDataSize() );
+
+   //position to move file get pointer to
+   uint64_t pos=0;
+   
+   //Check that there are nbytestoread left in the file, if not then throw exception
+   if(this->CheckCapacity(nbytestoread))
+   {
+      //Store the previous position
+      this->prevpointerloc=FileTell(filein);
+      //Skip pointer to new location
+      pos=lineno*this->numsamples*GetDataSize() + sampleno*GetDataSize();
+      //this->filein.seekg(pos,std::ios::beg);
+      FileSeek(filein,pos,SEEK_SET);
+      //Read in the length of data
+      fread(chdata,sizeof(char),nbytestoread,filein);
+   }
+   else
+   {
+      brinfo<<"Attempted to read "<<nbytestoread<<" but file reports there are less bytes remaining to be read"<<std::endl;
+      throw BRexception(brinfo.str());
+   }
+}

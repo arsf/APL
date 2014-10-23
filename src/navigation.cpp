@@ -73,7 +73,7 @@ const std::string optsdescription[number_of_possible_options]={
 "Offset to apply (in seconds) to offset the Position and Attitude data by",
 "If no Specim navigation file exists for this line.",
 "An optional BIL filename to output the quality flags to for the navigation.",
-"Force the processing when 'time goes backwards' in a navigation file (only use with raw nav files when the data is not used for further processing).",
+"Force the processing when 'time goes backwards' in a navigation file (only use without processed nav when the data is not used for further processing). DO NOT USE FOR TYPICAL DATA PROCESSING.",
 "Display this help"
 }; 
 

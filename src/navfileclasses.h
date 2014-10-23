@@ -52,12 +52,12 @@ public:
    SpecimNavData(const std::string filename);
    virtual ~SpecimNavData();
    virtual void Reader(){throw "Unassigned reader function in SpecimNavData.";};
-   double GetSyncTime(const unsigned long i)
+   double GetSyncDelay(const unsigned long i)
    {
       if(i<numsyncs)
-         return synctime[i];
+         return syncdelay[i];
       else
-         throw "Requested sync time index is out of bounds in GetSyncTime().";
+         throw "Requested sync time index is out of bounds in GetSyncDelay().";
    };
 
    double GetGPSSync(const unsigned long i)
@@ -68,16 +68,26 @@ public:
          throw "Requested GPS sync index is out of bounds in GetGPSSync(). Requested "+ToString(i)+" of "+ToString(numsyncs);
    };
 
+   int GetFrame(const unsigned long i)
+   {
+      if(i<numsyncs)
+         return syncframe[i];
+      else
+         throw "Requested frame index is out of bounds in GetFrame(). Requested "+ToString(i)+" of "+ToString(numsyncs);
+   };
+
    unsigned long GetNumSyncs(){return numsyncs;}
-   void UsePerSecondForSync();
+   bool UsePerSecondForSync();
 protected:
    
    unsigned long numsyncs; //number of sync messages
-   double* synctime; //sync times from message
+   double* syncdelay; //sync times from message
    int * syncgps; //integer GPS time of sync message
-   
-   std::list<int> persecond_syncgps;
-   std::list<double> persecond_synctime;
+   int* syncframe; //frame number that delay corresponds too
+
+   std::vector<int> persecond_frame;
+   std::vector<int> persecond_syncgps;
+   std::vector<double> persecond_syncdelay;
    bool use_persecond;
 
 };
@@ -529,7 +539,20 @@ public:
          bad=true;
          return;
       }
-      
+      //Test that there are only numbers in the string message components
+      //If it throws an exception then skip these messages
+      try
+      {
+         CheckNumbersOnly(GetItemFromString(message,1,delim));
+         CheckNumbersOnly(GetItemFromString(message,2,delim));
+      }
+      catch(...)
+      {
+         throw "There appears to be a non-numeric value in a specim time stamp SPTSMP message in the raw .nav file. Please correct this and re-run.";
+         //bad=true;
+         //return;
+      }
+
       delay=StringToDouble(GetItemFromString(message,1,delim),false)/10000.0;
       framenumber=StringToUINT(GetItemFromString(message,2,delim));
       triggerflag=StringToUINT(StripChecksum(GetItemFromString(message,3,delim)));
@@ -582,12 +605,13 @@ public:
    ~SpecimFileChooser();
 
    void Reader(){spnav->Reader();}
-   double GetSyncTime(const unsigned long i){return spnav->GetSyncTime(i);}
+   double GetSyncDelay(const unsigned long i){return spnav->GetSyncDelay(i);}
    double GetGPSSync(const unsigned long i){return spnav->GetGPSSync(i);}
+   int GetFrame(const unsigned long i){return spnav->GetFrame(i);}
    unsigned long GetNumSyncs(){return spnav->GetNumSyncs();}
    unsigned long GetNumEntries(){return spnav->GetNumEntries();}
    NavDataLine* GetLine(const unsigned long l){return spnav->GetLine(l);}
-   void UsePerSecondForSync(){spnav->UsePerSecondForSync();}
+   bool UsePerSecondForSync(){return spnav->UsePerSecondForSync();}
    bool IsASCII(){return asciifile;}
 
 protected:

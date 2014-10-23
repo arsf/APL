@@ -175,7 +175,7 @@ LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap
    //----------------------------------------------------------------------
    BinFile lev1(level1filename);
    if(igmr.Lines() != StringToUINT(lev1.FromHeader("lines")))
-      throw "Number of lines in level 1 file does not agree with number of lines in IGM file. Are you sure these are for the same flight line?";      
+      throw "Number of lines in level 1 file does not agree with number of lines in IGM file. Are you sure these are for the same flight line? "+lev1.FromHeader("lines")+" "+ToString(igmr.Lines());      
 
    for(uint64_t i=0;i<nlines_with_overlap;i++)
    {

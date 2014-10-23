@@ -17,6 +17,7 @@
 #include <sstream>
 #include <ctime>
 #include "commonfunctions.h"
+#include "filewriter.h"
 
 #ifdef EXE_NAME
 const std::string bildescriptionstring="BIL file created by "+std::string(EXE_NAME);
@@ -25,79 +26,56 @@ const std::string bildescriptionstring="BIL file created by ARSF BILWriter";
 #endif
 
 
-class BILWriter
+class BILWriter : public FileWriter
 {
 public:
-   BILWriter(std::string filename,unsigned int datasize); //constructor to open a new file filename and write data of type datasize 
-                                                          //(e.g. 1 byte (char),2 byte (uint) etc)
-                                                          //if file exists it will throw an error
-   BILWriter(std::string filename,unsigned int datasize,char cmethod); //constructor to open file using method cmethod ('a' - append, 'w' -overwrite)
-
    //constructor to assign BIL dimensions at "start up" as well as above methods
    BILWriter(std::string filename, unsigned int datatype, unsigned int nrows,unsigned int nsamps,unsigned int nbands,char cmethod);
-
    virtual ~BILWriter(); //destructor
 
-   //int WriteBytes(char* data,unsigned long int numbytes); //function to write numbytes worth of data array to file
-   int WriteBandLine(char* const data);//write a line of data fro 1 band
+   int WriteBandLine(char* const data);//write a line of data for 1 band
    int WriteLine(char* const data);
+   int WriteBandLineSection(char* const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end);
+   int WriteBandLineWithValue(const char xval){throw "This function is no longer used - stub remains for base class compatibility.";}; //write out data with constant value over the line
 
-   //Function to write a number of lines of data (for all bands)
-   void WriteLines(char* const data,const unsigned int nl)
+   template<class T>
+   void WriteBandLineWithValue(T xval) //write out data with constant value over the line
    {
-      int ret=0;
-      for(unsigned int i=0;i<nl;i++)
-      {
-         ret=WriteLineSection(&data[i*this->numsamples*this->numbands*this->datasize],this->numsamples,0,numsamples-1);
-         if(ret==-1){std::cout<<bilinfo.str()<<std::endl;}
-      }
+      T* data=new T[this->numsamples]; //create array of data of size of 1 line for all bands
+      for(unsigned int i=0;i<this->numsamples;i++)
+         data[i]=static_cast<T>(xval);
+      WriteDataToBandLineSection(data,this->numsamples,0,this->numsamples-1);
+      delete data;
+      data=NULL;
    }
-
-   int WriteBandLineSection(char* const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end,const unsigned int band);
-   //Function to write a line from given start point to end point.
-   //i.e. write a section of a line (for all bands) from an array of a larger size - also need the number_of_samples of the data array
-   //since these may be different (WILL BE) to output number of samples
-   //NOTE numsamples_array IS ONLY THE NUMBER OF SAMPLES (NOT SAMPLES*BANDS*LINES etc)
-   int WriteLineSection(char* const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end);
-   //int WriteLineSection(const char* data,unsigned int start, unsigned int end); 
-
-   int WriteLineWithValue(const char xval); //write out data with constant value over the line
-   int WriteBandLineWithValue(const char xval,const unsigned int band); //write out data with constant value over the line
 
    int Close(); //Close the file, output the hdr information, check nrows/samples/bands agree with written filesize and call the destructor
 
-   void SetBILDimensions(unsigned int nrows,unsigned int nsamps, unsigned int nbands) //Set the private BIL size variables
-      {numrows=nrows;numsamples=nsamps;numbands=nbands;}       //Should be no need to use this function if coded correctly.
-
    void AddToHdr(std::string item){hdrtext<<item<<std::endl;} //Adds the string item to the stringstream of header text
+   void AddMetadata(std::string name,std::string value);
+
    bool IsGood()const{return isgood;}//Get the status of the BILWriter (1=good 0=bad)
-   std::string GetBilInfo() const{return bilinfo.str();}
-   virtual void PrepareHeader(); //Prepare the header file stringstream to contain the relevant info
    unsigned int GetDataSize() const {return datasize;}
 
    //Exception class
-   class BILexception
+   class BILexception : public FileWriterException
    {
    public:
-      std::string info; //pointer to BILwriter stringstream bilinfo
-      BILexception();
-      BILexception(std::string ss){info=ss;};  
-
+      BILexception() : FileWriterException(){}
+      BILexception(std::string ss) : FileWriterException(ss){}
+      BILexception(std::string ss,const char* extra): FileWriterException(ss,extra){}
       const char* what() const throw()
       {
          return "A BIL Exception has occurred.";
       }
-   
    };
-
-   enum DataType {uchar8, char8, uint16, int16, uint32, int32, float32, float64 };
 
    unsigned int GetDataType() const {return datatype;}
 
    //numsamples_array = in terms of if array = [s*b*l] then numsamples_array=s NOT s*b*l
    //Data is an array of only 1 line for 1 band length
    template<class T>
-   void WriteDataToBandLineSection(T const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end,const unsigned int band)
+   void WriteDataToBandLineSection(T const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end)
    {
       unsigned char* cp=NULL;
       unsigned short* usp=NULL;
@@ -114,7 +92,7 @@ public:
          {
             cp[i]=static_cast<unsigned char>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteBandLineSection((char*)cp,numsamples_array,start,end,band);
+         WriteBandLineSection((char*)cp,numsamples_array,start,end);
          delete[] cp;
          break;
       case 2:
@@ -123,7 +101,7 @@ public:
          {
             sp[i]=static_cast<short>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteBandLineSection((char*)sp,numsamples_array,start,end,band);
+         WriteBandLineSection((char*)sp,numsamples_array,start,end);
          delete[] sp;
          break;
       case 3:
@@ -132,7 +110,7 @@ public:
          {
             ip[i]=static_cast<int>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteBandLineSection((char*)ip,numsamples_array,start,end,band);
+         WriteBandLineSection((char*)ip,numsamples_array,start,end);
          delete[] ip;
          break;
       case 4:
@@ -141,7 +119,7 @@ public:
          {
             fp[i]=static_cast<float>(data[i]);
          }
-         WriteBandLineSection((char*)fp,numsamples_array,start,end,band);
+         WriteBandLineSection((char*)fp,numsamples_array,start,end);
          delete[] fp;
          break;
       case 5:
@@ -150,7 +128,7 @@ public:
          {
             dp[i]=static_cast<double>(data[i]);
          }
-         WriteBandLineSection((char*)dp,numsamples_array,start,end,band);
+         WriteBandLineSection((char*)dp,numsamples_array,start,end);
          delete[] dp;
          break;
       case 12:
@@ -159,7 +137,7 @@ public:
          {
             usp[i]=static_cast<unsigned short>(data[i]+0.5); // add on 0.5 to round to nearest
          }
-         WriteBandLineSection((char*)usp,numsamples_array,start,end,band);
+         WriteBandLineSection((char*)usp,numsamples_array,start,end);
          delete[] usp;
          break;
       case 13:
@@ -168,7 +146,7 @@ public:
          {
             uip[i]=static_cast<unsigned int>(data[i]+0.5);// add on 0.5 to round to nearest
          }
-         WriteBandLineSection((char*)uip,numsamples_array,start,end,band);
+         WriteBandLineSection((char*)uip,numsamples_array,start,end);
          delete[] uip;
          break;
       default:
@@ -181,7 +159,7 @@ public:
    void WriteDataToLineSection(T const data,const unsigned int numsamples_array,const unsigned int start, const unsigned int end)
    {
       for(unsigned int b=0;b<numbands;b++)
-         WriteDataToBandLineSection(&data[numsamples_array*b],numsamples_array,start,end,b);
+         WriteDataToBandLineSection(&data[numsamples_array*b],numsamples_array,start,end);
    }
 
 private:
@@ -196,6 +174,7 @@ private:
    bool isgood;//status flag
    void SetSizeFromType(const unsigned int type); //set the datatype/datasize values
    int WriteHeader(); //Creates and outputs the associated header file
+   virtual void PrepareHeader(); //Prepare the header file stringstream to contain the relevant info
 };
 
 #endif

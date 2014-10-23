@@ -17,6 +17,7 @@
 #include "commandline.h"
 #include "map.h"
 #include "os_dependant.h"
+#include "filewriter.h"
 
 //-------------------------------------------------------------------------
 // Software description
@@ -116,7 +117,8 @@ std::string GetHelpFor(const std::string str)
    helpdoc["pixelsize"]="\nThis is used to specify the size of the output mapped pixels in X and Y. The units will depend on the projection of the input IGM file. "
                   "If the IGM file is in metres then the pixelsize should be given in metres. If the IGM file is in degrees then the pixel size should "
                   "be given in degrees also.\n"
-                  "\nFor example, to map to square pixels of 2 metres, use: -pixelsize 2 2.\n";
+                  "\nFor example, to map to square pixels of 2 metres, use: -pixelsize 2 2.\n"
+                  "\nNote that -area has a option to specify the number of rows and columns of the output image which can be defined instead of a pixel size.";
                   
 
    helpdoc["outputlevel"]="\nThis optional argument is used to set the amount of detail that is output to the terminal during a run.\n"
@@ -129,7 +131,9 @@ std::string GetHelpFor(const std::string str)
    helpdoc["area"]="\nThis optional argument can be used if only a portion of the flight line is required to be mapped."
                   "The area can be defined by a rectangle of coordinates in the same projection as the IGM file.\n"
                   "\nThe order the coordinates are given is: minimumX maximumX minimumY maximumY\n"
-                  "Note that the full flight line is still read through by the software to account for repeat area coverage.\n";
+                  "Note that the full flight line is still read through by the software to account for repeat area coverage.\n"
+                  "A 6 parameter option is also available where the 5th and 6th parameter describes the number of rows and columns that the final image "
+                  "should have. This can be specified instead of the -pixelsize option if the dimensions of the output image are to be fixed rather than resolution.";
 
    helpdoc["ignorescan"]="\nThis allows a space separated list of scan lines to be entered that will be ignored in the mapper. This is useful if "
                          "there are suspicious scan lines in the level-1 data that you wish to be excluded from the mapped data.\n"
@@ -226,7 +230,7 @@ int main(int argc, char* argv[])
    niceexename=niceexename.substr(niceexename.find_last_of("/\\")+1);
 
    //data type to output (e.g. float32)
-   BILWriter::DataType output_data_type=BILWriter::float32;
+   FileWriter::DataType output_data_type=FileWriter::float32;
 
    //Output a "nice" header
    Logger::FormattedInformation(niceexename,VERSION,DESCRIPTION);
@@ -351,7 +355,8 @@ int main(int argc, char* argv[])
             Logger::Log("Will use pixelsize: "+ToString(Xpixelsize)+" "+ToString(Ypixelsize));
          }
       }
-      else
+      //If the pixel size is not on the command line the -area with 6 options is not present then exit
+      else if(!((cl->GetArg("-area").compare(optiononly)!=0)&&(cl->NumArgsOfOpt("-area")==6)))
       {
          throw CommandLine::CommandLineException("Argument -pixelsize must be present on the command line.\n");
       }
@@ -395,7 +400,6 @@ int main(int argc, char* argv[])
          throw CommandLine::CommandLineException("Argument -mapname must be present on the command line.\n");  
       }
 
-
       //----------------------------------------------------------------------------
       // Get the area to map
       //----------------------------------------------------------------------------
@@ -411,6 +415,36 @@ int main(int argc, char* argv[])
             user_area=new Area(mix,max,miy,may);
 
             Logger::Log("Will only map inside coordinates defined by area: Min X: "+ToString(mix)+" Max X: "+ToString(max)+" Min Y: "+ToString(miy)+" Max Y: "+ToString(may));
+         }
+         //Or check that 6 numbers follow the area option - and get them if they exist
+         else if((cl->GetArg("-area").compare(optiononly)!=0)&&(cl->NumArgsOfOpt("-area")==6))
+         {            
+            double mix=StringToDouble(cl->GetArg("-area",0));
+            double max=StringToDouble(cl->GetArg("-area",1));
+            double miy=StringToDouble(cl->GetArg("-area",2));
+            double may=StringToDouble(cl->GetArg("-area",3));
+            user_area=new Area(mix,max,miy,may);
+            //User has specified number of rows and columns they want in the output image
+            //Use these to calculate the pixel size - throw an exception if pixel size has been specified also 
+            unsigned int nrows=StringToUINT(cl->GetArg("-area",4));
+            unsigned int ncols=StringToUINT(cl->GetArg("-area",5));
+            if(cl->OnCommandLine("-pixelsize"))
+            {
+               throw "Argument -area cannot be specified with 6 parameters if the -pixelsize has been specified also.";
+            }
+            Xpixelsize=(max-mix)/ncols;
+            Ypixelsize=(may-miy)/nrows;
+            Logger::Log("Derived pixel sizes (X,Y): "+ToString(Xpixelsize)+" "+ToString(Ypixelsize));
+            //Check for possible floating point errors - I'm not sure if this is required or if it prevents problems further down the line.
+            //We round the result, as if there is a floating point error (e) it is assumed to be small, giving a result of
+            //(ncols - e) or (ncols +e)  - HOWEVER, maybe rounding actually makes this test worthless as it hides the error we're looking for?
+            //Hence I have changed the test to ceil as this will show when an error is present, and is the method used in the grid dimension calculator.
+            if((ceil((max-mix)/Xpixelsize) !=ncols) || (ceil((may-miy)/Ypixelsize) !=nrows))
+            {
+               throw "Rounding error is preventing the correct number of rows/columns to be generated from the derived pixel sizes. "
+                     "Derived pixel size X: "+ToString(Xpixelsize)+"  pixel size Y: "+ToString(Ypixelsize)+"\nIt may be possible to define pixel size "
+                     "instead to get desired dimensions, report this as an error.";
+            }            
          }
          else
             throw CommandLine::CommandLineException("Argument -area must immediately precede the bounds to define the area rectangle.\n");         
@@ -554,31 +588,31 @@ int main(int argc, char* argv[])
             //Is there a better way to do this?
             if(strOutputdatatype.compare("char")==0)
             {
-               output_data_type=BILWriter::uchar8;
+               output_data_type=FileWriter::uchar8;
             }            
             else if(strOutputdatatype.compare("int16")==0)
             {
-               output_data_type=BILWriter::int16;
+               output_data_type=FileWriter::int16;
             }
             else if(strOutputdatatype.compare("uint16")==0)
             {
-               output_data_type=BILWriter::uint16;
+               output_data_type=FileWriter::uint16;
             }
             else if(strOutputdatatype.compare("int32")==0)
             {
-               output_data_type=BILWriter::int32;
+               output_data_type=FileWriter::int32;
             }
             else if(strOutputdatatype.compare("uint32")==0)
             {
-               output_data_type=BILWriter::uint32;
+               output_data_type=FileWriter::uint32;
             }
             else if(strOutputdatatype.compare("float32")==0)
             {
-               output_data_type=BILWriter::float32;
+               output_data_type=FileWriter::float32;
             }
             else if(strOutputdatatype.compare("float64")==0)
             {
-               output_data_type=BILWriter::float64;
+               output_data_type=FileWriter::float64;
             }
             else
             {
@@ -592,7 +626,7 @@ int main(int argc, char* argv[])
       else
       {
          //Default to float32
-         output_data_type=BILWriter::float32;
+         output_data_type=FileWriter::float32;
          Logger::Log("Will write out data as default type: float32");
       }
 
@@ -922,25 +956,25 @@ int main(int argc, char* argv[])
       switch(intype)
       {     
       case 1:// byte data
-         map=new Map<char>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<char>(nodata_value),TOROUND);
+         map=new Map<char>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,nodata_value,TOROUND);
          break;
       case 2://signed 16bit integer data
-         map=new Map<int16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<int16_t>(nodata_value),TOROUND);
+         map=new Map<int16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,nodata_value,TOROUND);
          break;
       case 3://signed 32bit integer byte data
-         map=new Map<int32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<int32_t>(nodata_value),TOROUND);
+         map=new Map<int32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,nodata_value,TOROUND);
          break;
       case 4://float32 data
-         map=new Map<float>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<float>(nodata_value),TOROUND);
+         map=new Map<float>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,nodata_value,TOROUND);
          break;
       case 5:// double data
-         map=new Map<double>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<double>(nodata_value),TOROUND);
+         map=new Map<double>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,nodata_value,TOROUND);
          break;
       case 12://16-bit unsigned short int data
-         map=new Map<uint16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint16_t>(nodata_value),TOROUND);
+         map=new Map<uint16_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,nodata_value,TOROUND);
          break; 
       case 13://32-bit unsigned int data
-         map=new Map<uint32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,static_cast<uint32_t>(nodata_value),TOROUND);
+         map=new Map<uint32_t>(strMapName,Xpixelsize,Ypixelsize,strBandList,user_area,strLev1File,interpolation_method,numpoints,process_buffer_sizeMB*1024*1024,output_data_type,strRowColMapFilename,nodata_value,TOROUND);
          break; 
       default:
          throw "Unrecognised data type in level 1 file. Cannot create a map of this data type. Got: "+ToString(intype);
@@ -954,6 +988,13 @@ int main(int argc, char* argv[])
       delete cl;
       delete tg;
       exit(1);
+   }
+   catch(FileWriter::FileWriterException e)
+   {
+      Logger::Error(std::string(e.what())+"\n"+e.info);
+      delete cl;
+      delete tg;
+      exit(1);      
    }
    catch(std::string e)
    {

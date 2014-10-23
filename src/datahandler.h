@@ -96,9 +96,11 @@ public:
    //Return the numentries value
    unsigned long GetNumEntries(){return navcollection->SizeOfArray();}
    //Get the sync time i
-   virtual double GetSyncTime(const unsigned long i){return 0;}
+   virtual double GetSyncDelay(const unsigned long i){return 0;}
    //Get the number of sync messages found
    virtual unsigned long GetNumSyncs(){return 0;}
+   //Get the frame the delay relates to
+   virtual int GetFrame(const unsigned long i){return 0;}
    //Function to smooth the data (once it has been read in)
    void Smooth(void (*f)(const unsigned long ,DataHandler* ,NavDataLine* ,const int),const unsigned int smoothkernelsize);
    void Smooth(void (*f)(const unsigned long ,DataHandler* ,NavDataLine* ,const int),const int element, NavDataLine* store,const unsigned int smoothkernelsize);

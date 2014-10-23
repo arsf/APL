@@ -116,7 +116,7 @@ NavigationSyncer::NavigationSyncer(std::string navfilename, std::string lev1file
    }
    catch(std::string e)
    {
-      if(e.compare(0,bilin.MissingHeaderItemError().length(),bilin.MissingHeaderItemError()))
+      if(e.compare(0,bilin.MissingHeaderItemError().length(),bilin.MissingHeaderItemError())==0)
       {
          //Set to a value that means "no value in header"
          hdrsync=NOSYNCINHDR;
@@ -220,8 +220,7 @@ void NavigationSyncer::FindScanTimes()
    if(navfile!=NULL) // Use the nav/hdr files to find the sync message
    {
       //Check for single versus multiple time stamps
-      navfile->UsePerSecondForSync();
-
+      bool persec=navfile->UsePerSecondForSync();
       int syncrecord_index=0;
 
       //We need to test which of the sync messages is for this file - can look at GPS time of sync message
@@ -242,7 +241,7 @@ void NavigationSyncer::FindScanTimes()
       if(mindiff > lev1firstscanmaxexpectedsize)
       {
          //Are there multiple sync messages?
-         if(navfile->GetNumSyncs()>1)
+         if((navfile->GetNumSyncs()>1)&&(persec==false))
          {
             //Closest is still greater than "lev1firstscanmaxexpectedsize" seconds away - just list choices and let user select.
             Logger::Log("Multiple identical sync delay values in Specim nav file. None fall within the "+ToString(lev1firstscanmaxexpectedsize)+" seconds window of start time of level 1 file.");
@@ -250,12 +249,18 @@ void NavigationSyncer::FindScanTimes()
             for(unsigned int vecindex=0;vecindex<navfile->GetNumSyncs();vecindex++)   
             {
                //The value to add onto the hdr start time to get the "synced" time assuming the hdr start time is used as scan line 0 time
-               double scntoff=(navfile->GetGPSSync(vecindex) -navfile->GetSyncTime(vecindex)) - lev1starttime;
+               double scntoff=(navfile->GetGPSSync(vecindex) -navfile->GetSyncDelay(vecindex)) - lev1starttime;
                Logger::Log("Sync message time: "+ToString(navfile->GetGPSSync(vecindex))+" Scantimeoffset value to use: "+ToString(scntoff));
             }
             throw "Multiple possibilities for sync time. Try using one of the suggested values above as a -scantimeoffset and processing with -nonav";
          }
-         else
+         else if((navfile->GetNumSyncs()>1)&&(persec==true))
+         {
+            //This is to be expected (more than 1 sync in file)
+            //Should be closer to start time than lev1firstscanmaxexpectedsize though?
+            Logger::Warning("1 Sync message found but greater than 'maximum expected size' of "+ToString(lev1firstscanmaxexpectedsize)+" seconds away from level1 start time.");
+         }
+         else 
          {
             //Only 1 sync message but > lev1firstscanmaxexpectedsize seconds away - use with a warning
             Logger::Warning("1 Sync message found but greater than 'maximum expected size' of "+ToString(lev1firstscanmaxexpectedsize)+" seconds away from level1 start time.");
@@ -263,16 +268,22 @@ void NavigationSyncer::FindScanTimes()
       }
 
       //output a message for the sync index used
-      Logger::Log("Using the sync message from index "+ToString(syncrecord_index)+" which probably means it is for flight line "+ToString(syncrecord_index)+" in this specim nav file (note these are referenced from 0 not 1).");
-      Logger::Log("Sync value: "+ToString(navfile->GetSyncTime(syncrecord_index)));
-      //Get the GPS time of the sync message
-      double gpssync=navfile->GetGPSSync(syncrecord_index);
+      if(persec==false)
+      {
+         Logger::Log("Using the sync message from index "+ToString(syncrecord_index)+" which probably means it is for flight line "+ToString(syncrecord_index)+" in this specim nav file (note these are referenced from 0 not 1).");
+         Logger::Log("Sync value: "+ToString(navfile->GetSyncDelay(syncrecord_index)));
+      }
+      else
+      {
+         Logger::Log("Using the per second sync messages in this specim nav file.");
+         Logger::Log("First sync delay value: "+ToString(navfile->GetSyncDelay(0)));
+      }
+
+      //Get the GPS time of the (first?) sync message
+      double gps_integer_time=navfile->GetGPSSync(syncrecord_index);
 
       //Subtract the sync message time
-      double firstscantime=gpssync-navfile->GetSyncTime(syncrecord_index);
-
-      //Add on GPS leap seconds to get into UTC if from Specim Nav file
-      //firstscantime+=leapseconds;
+      double firstscantime=gps_integer_time - navfile->GetSyncDelay(syncrecord_index);
 
       //Add on the cropped start time offset - this is 0 if no cropping (at the start of the line) has taken place
       Logger::Log("Applying crop time offset of: "+ToString(croptimeoffset));
@@ -281,10 +292,58 @@ void NavigationSyncer::FindScanTimes()
       //Compare to start time of level-1 header - in GPS sec of week - to prevent data from a different weekday being used 
       CompareLev1ToNavTimes(firstscantime);
 
-      //Set the per scan times
-      for(unsigned int i=0;i<nscans;i++)
-         time[i]=firstscantime + i*scanseparation;
-
+      if(persec==false)
+      {
+         //Set the per scan times
+         for(unsigned int i=0;i<nscans;i++)  
+            time[i]=firstscantime + i*scanseparation;
+      }
+      else
+      {
+         unsigned int thissyncframe=navfile->GetFrame(syncrecord_index);
+         unsigned int nextsyncframe=navfile->GetFrame(syncrecord_index+1);
+         //Set the per scan times
+         for(unsigned int i=0;i<nscans;i++)  
+         {
+            if((i<nextsyncframe)&&(i>=thissyncframe))
+               time[i]=firstscantime + (i-thissyncframe)*scanseparation;
+            else if(i<thissyncframe)
+            {
+               //This case shouldn't occur unless there is a problem with the nav file or our understanding of it
+               //So for the moment we will not handle it other than to exit
+               throw "(Software Bug): Frame number is less than current sync message frame - will need to write code for this eventuallity.";
+            }
+            else
+            {
+               //need to update to new sync message
+               try
+               {
+                  syncrecord_index++;
+                  if(syncrecord_index+1 < navfile->GetNumSyncs())
+                  {
+                     thissyncframe=navfile->GetFrame(syncrecord_index);
+                     nextsyncframe=navfile->GetFrame(syncrecord_index+1);
+                  }
+                  else
+                  {
+                     //Here we don't actually have a next sync message - so all following scans shall use previous PPS to sync to
+                     //adding on 1000 as an arbitrarily large number - this could essentially be anything > 1
+                     nextsyncframe+=1000;
+                     //Decrease the syncrecord index back to what it was
+                     syncrecord_index--;
+                  }
+                  gps_integer_time=navfile->GetGPSSync(syncrecord_index);
+                  firstscantime=gps_integer_time - navfile->GetSyncDelay(syncrecord_index);
+                  firstscantime=firstscantime + croptimeoffset;         
+               }
+               catch(...)
+               {
+                  throw "Error in persecond syncing for each scantime - probably accessing past a bounded array. This is a coding bug - report it.";
+               }
+               time[i]=firstscantime + (i-thissyncframe)*scanseparation;              
+            }               
+         }
+      }
       Logger::Log("First scan will have time: "+ToString(time[0])+".  Last scan will have time: "+ToString(time[nscans-1]));
       
    }

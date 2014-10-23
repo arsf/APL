@@ -70,7 +70,7 @@ public:
       IGNOREVALUE=static_cast<T>(ig);
       Logger::Log("Interpolating level1 data ignoring values of: "+ToString(IGNOREVALUE)+" This may be different to entered value as it has been cast to level-1 data type.");
    }
-   virtual void SetNoDataValue(T ndv)
+   virtual void SetNoDataValue(double ndv)
    {
       NODATAVALUE=ndv;
    }
@@ -80,7 +80,7 @@ protected:
 
    T IGNOREVALUE;
    bool ignoredata; 
-   T NODATAVALUE;  
+   double NODATAVALUE;  
 
    double* data;
    unsigned int length;  

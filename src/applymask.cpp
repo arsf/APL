@@ -61,7 +61,7 @@ const std::string optsdescription[number_of_possible_options]={
 // Template function to apply mask to data file
 //-------------------------------------------------------------------------
 template <class L,class M>
-void MaskData(L* lev1data,M* maskdata,BinFile* lev1,BinFile* mask, BILWriter* output, unsigned int flagsum,L MASKVALUE,BinFile* maskmethod,std::vector<unsigned char> methods)
+void MaskData(L* lev1data,M* maskdata,BinFile* lev1,BinFile* mask, FileWriter* output, unsigned int flagsum,L MASKVALUE,BinFile* maskmethod,std::vector<unsigned char> methods)
 {
    unsigned int lines=StringToUINT(lev1->FromHeader("lines"));
    unsigned int bands=StringToUINT(lev1->FromHeader("bands"));
@@ -496,42 +496,42 @@ int main (int argc, char* argv[])
          throw "Can only support mask files containing 1-byte data type at the moment.";
 
       //Get the output data type - this will match the input level 1 data type
-      BILWriter::DataType output_data_type;
+      FileWriter::DataType output_data_type;
       switch(lev1.GetDataType())
       {
       case 1: //8-bit
          {
-            output_data_type=BILWriter::uchar8;
+            output_data_type=FileWriter::uchar8;
             break;   
          }
       case 2: //16 bit signed short int
          {
-            output_data_type=BILWriter::int16;
+            output_data_type=FileWriter::int16;
             break;
          }
       case 3: //32 bit signed short int
          {
-            output_data_type=BILWriter::int32;
+            output_data_type=FileWriter::int32;
             break;
          }
       case 4: //float
          {
-            output_data_type=BILWriter::float32;   
+            output_data_type=FileWriter::float32;   
             break;
          }
       case 5: //double
          {
-            output_data_type=BILWriter::float64;
+            output_data_type=FileWriter::float64;
             break;
          }
       case 12: //16 bit unsigned short int
          {
-            output_data_type=BILWriter::uint16;
+            output_data_type=FileWriter::uint16;
             break;
          }
       case 13: //32 bit unsigned int
          {
-            output_data_type=BILWriter::uint32;
+            output_data_type=FileWriter::uint32;
             break;
          }
       default:
@@ -540,7 +540,7 @@ int main (int argc, char* argv[])
       }
 
       //Open the file to output to
-      BILWriter output(strOutputName,output_data_type,lines,samples,bands,'w');
+      FileWriter* output=new BILWriter(strOutputName,output_data_type,lines,samples,bands,'w');
 
       //Copy over the level-1 header contents to the new level-1 file
       std::map<std::string, std::string, cmpstr> header=lev1.CopyHeaderExcluding();
@@ -552,7 +552,7 @@ int main (int argc, char* argv[])
          else
             tmp=(*iter).first; //a comment - does not have a second
 
-         output.AddToHdr(lev1.TidyForHeader(tmp));
+         output->AddToHdr(lev1.TidyForHeader(tmp));
       }
       
       switch(lev1.GetDataType())
@@ -560,43 +560,43 @@ int main (int argc, char* argv[])
       case 1: //8-bit
          {
             char MASKVALUE=0;
-            MaskData(clev1data,maskdata,&lev1,&mask,&output,flagsum,MASKVALUE,maskmethod,methods);
+            MaskData(clev1data,maskdata,&lev1,&mask,output,flagsum,MASKVALUE,maskmethod,methods);
             break;   
          }
       case 2: //16 bit signed short int
          {
             short int MASKVALUE=0;
-            MaskData(silev1data,maskdata,&lev1,&mask,&output,flagsum,MASKVALUE,maskmethod,methods);
+            MaskData(silev1data,maskdata,&lev1,&mask,output,flagsum,MASKVALUE,maskmethod,methods);
             break;
          }
       case 3: //32 bit signed int
          {
             int MASKVALUE=0;
-            MaskData(ilev1data,maskdata,&lev1,&mask,&output,flagsum,MASKVALUE,maskmethod,methods);
+            MaskData(ilev1data,maskdata,&lev1,&mask,output,flagsum,MASKVALUE,maskmethod,methods);
             break;
          }
       case 4: //float
          {
             float MASKVALUE=0;
-            MaskData(flev1data,maskdata,&lev1,&mask,&output,flagsum,MASKVALUE,maskmethod,methods);   
+            MaskData(flev1data,maskdata,&lev1,&mask,output,flagsum,MASKVALUE,maskmethod,methods);   
             break;
          }
       case 5: //double
          {
             double  MASKVALUE=0;
-            MaskData(dlev1data,maskdata,&lev1,&mask,&output,flagsum,MASKVALUE,maskmethod,methods);
+            MaskData(dlev1data,maskdata,&lev1,&mask,output,flagsum,MASKVALUE,maskmethod,methods);
             break;
          }
       case 12: //16 bit unsigned short int
          {
             unsigned short int MASKVALUE=0;
-            MaskData(usilev1data,maskdata,&lev1,&mask,&output,flagsum,MASKVALUE,maskmethod,methods);
+            MaskData(usilev1data,maskdata,&lev1,&mask,output,flagsum,MASKVALUE,maskmethod,methods);
             break;
          }
       case 13: //32 bit unsigned int
          {
             unsigned int MASKVALUE=0;
-            MaskData(uilev1data,maskdata,&lev1,&mask,&output,flagsum,MASKVALUE,maskmethod,methods);
+            MaskData(uilev1data,maskdata,&lev1,&mask,output,flagsum,MASKVALUE,maskmethod,methods);
             break;
          }
       default:
@@ -606,6 +606,10 @@ int main (int argc, char* argv[])
 
       if(maskmethod!=NULL)
          delete maskmethod;
+
+      if(output!=NULL)
+         output->Close();
+
    }
    catch(std::string e)
    {

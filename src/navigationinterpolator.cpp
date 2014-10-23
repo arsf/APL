@@ -185,7 +185,7 @@ void NavigationInterpolator::Interpolate(void (*f)(const double*,const int,DataH
 void NavigationInterpolator::Writer(std::string outfilename,std::string extrainfo)
 {
    //Write out the data as doubles to a 7 band, 1 sample, N lines BIL file
-   BILWriter bilout(outfilename,BILWriter::float64,nscans,1,7,'w');
+   BILWriter bilout(outfilename,FileWriter::float64,nscans,1,7,'w');
    if (extrainfo.compare("")!=0)
       bilout.AddToHdr(extrainfo);
 
@@ -219,7 +219,7 @@ void NavigationInterpolator::Writer(std::string outfilename,std::string extrainf
 //-------------------------------------------------------------------------
 void NavigationInterpolator::WriteFlags(std::string outfilename,std::string extrainfo)
 {
-   BILWriter bilout(outfilename,BILWriter::uchar8,nscans,1,1,'w');
+   BILWriter bilout(outfilename,FileWriter::uchar8,nscans,1,1,'w');
    if (extrainfo.compare("")!=0)
       bilout.AddToHdr(extrainfo);
 

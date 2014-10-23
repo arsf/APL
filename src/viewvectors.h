@@ -52,7 +52,7 @@ class ViewVectors
             return rotX[i];
       }
 
-      unsigned int GetSpatialBinning()const{return spatialbin;}
+      unsigned int GetSpatialBinning(unsigned int i=0)const{return spatialbin[i];}
 
    private:
       //Size of the sensor CCD - i.e. will define the number of view vectors
@@ -63,7 +63,8 @@ class ViewVectors
       std::string filename;
       //Function to read in the given view vector file
       int ReadVVFile();
-      unsigned int spatialbin;
+      unsigned int* spatialbin;
+      unsigned int numofspatbinnings;
 };
 
 #endif

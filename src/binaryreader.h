@@ -42,7 +42,7 @@ public:
    
    virtual ~BinaryReader();//destructor
 
-   std::string FromHeader(std::string key,std::string THROW="false") //Search the map for the string key and return  the string item. (Return a string from the map)
+   virtual std::string FromHeader(std::string key,std::string THROW="false") //Search the map for the string key and return  the string item. (Return a string from the map)
    {
       std::map<std::string,std::string>::iterator it;
       it=this->Header.find(ToLowerCase(key));
@@ -56,32 +56,33 @@ public:
       }
    }       
 
-   std::string FromHeader(std::string key,int itemnum,std::string THROW="false"); //Search the map for the string key and return the itemnum variable on the string. (for multiple objects)
-   unsigned int GetDataSize() const {return datasize;}
-   unsigned int GetDataType() const {return datatype;}
+   virtual std::string FromHeader(std::string key,int itemnum,std::string THROW="false"); //Search the map for the string key and return the itemnum variable on the string. (for multiple objects)
+   virtual unsigned int GetDataSize() const {return datasize;}
+   virtual unsigned int GetDataType() const {return datatype;}
 
-   virtual void Readline(char* const chdata){throw BRexception("Undefined function call.");} //Read 1 line for all bands [equivalent number of bytes from current position]
+   virtual void Readline(char* const chdata){throw BRexception("Undefined function call: ",__PRETTY_FUNCTION__);} //Read 1 line for all bands [equivalent number of bytes from current position]
    virtual void Readline(char* const chdata, unsigned int line) //Read specified line for all bands
          {Readlines(chdata,line,1);} //This is essentially a special case of readlines where numlines=1
-   virtual void Readlines(char* const chdata, unsigned int startline, unsigned int numlines){throw BRexception("Undefined function call.");}; //Read numlines lines of data from startline
-   virtual void Readbytes(char* const chdata, unsigned long int bytes){throw BRexception("Undefined function call.");}; //Read the specified number of bytes from current position
-   virtual int Readband(char* const chdata, unsigned int band){throw BRexception("Undefined function call.");}; //Reads the specified band
-   virtual int Readbandline(char* const chdata, unsigned int band, unsigned int line){throw BRexception("Undefined function call.");}; //reads the given line for the given band
+   virtual void Readlines(char* const chdata, unsigned int startline, unsigned int numlines){throw BRexception("Undefined function call: ",__PRETTY_FUNCTION__);}; //Read numlines lines of data from startline
+   virtual void Readbytes(char* const chdata, unsigned long int bytes){throw BRexception("Undefined function call: ",__PRETTY_FUNCTION__);}; //Read the specified number of bytes from current position
+   virtual int Readband(char* const chdata, unsigned int band){throw BRexception("Undefined function call: ",__PRETTY_FUNCTION__);}; //Reads the specified band
+   virtual int Readbandline(char* const chdata, unsigned int band, unsigned int line){throw BRexception("Undefined function call: ",__PRETTY_FUNCTION__);}; //reads the given line for the given band
 
-   virtual double ReadCell(const unsigned int band,const unsigned int line, const unsigned int col){throw BRexception("Undefined function call.");};
-   virtual void ReadlineToDoubles(double* const ddata,unsigned int line){throw BRexception("Undefined function call.");};
+   virtual double ReadCell(const unsigned int band,const unsigned int line, const unsigned int col){throw BRexception("Undefined function call: ",__PRETTY_FUNCTION__);};
+   virtual void ReadlineToDoubles(double* const ddata,unsigned int line){throw BRexception("Undefined function call: ",__PRETTY_FUNCTION__);};
 
    virtual bool IsOpen()const{if(filein==NULL){return false;} else {return true;}} //test if the binary BIL file is open
    virtual bool IsGood()const{if(ferror(filein)!=0){return false;} else if(feof(filein)!=0){return false;}else{return true;} }//Test if eof/fail/bad bits set
    virtual int Ferror()const{return ferror(filein);}
    virtual int Feof()const{return feof(filein);}
-   void Close(); //Close the file, free any allocated memory, call the destructor
+   virtual void Close(); //Close the file, free any allocated memory, call the destructor
 
    //Class to handle exceptions
    class BRexception
    {
    public:
       std::string info; //pointer to BILReader stringstream bilinfo
+      BRexception(std::string ss,const char* extra){info=ss+"\n"+std::string(extra);}
       BRexception(std::string ss){info=ss;};  
 
       const char* what() const throw()
@@ -99,14 +100,22 @@ public:
    //Including this as it is required by DEMBinFile - maybe better to inheri this class as DEMBinaryReader?
    virtual int ReadRect(char* const chdata, const int minrow, const int maxrow,const int mincol,const int maxcol) {throw "Undefined function call.";};
    //Tidy up strings passed to header file
-   virtual std::string TidyForHeader(std::string totidy);
+   virtual std::string TidyForHeader(std::string totidy,bool wrapinbraces=false);
 
    uint64_t GetFileSize() const {return filesize;}
-   std::map<std::string, std::string, cmpstr> CopyHeader()const{return Header;}
+   virtual std::map<std::string, std::string, cmpstr> CopyHeader()const{return Header;}
    //Function to return the filename
    std::string GetHeaderFilename(){return hdrfilename;}
    std::string MissingHeaderItemError()const{return missingheaderitemerror;}
    std::string GetFileName() const {return filename;}
+
+   uint64_t NumLines()const{return numrows;}
+   uint64_t NumSamples()const{return numsamples;}
+   uint64_t NumBands()const{return numbands;}
+
+   //made unprotected ...
+   double DerefToDouble(char* cbuffer);
+
 protected:
    std::string missingheaderitemerror;
    interleavetype FILESTYLE;
@@ -132,7 +141,6 @@ protected:
    //Function to get the header filename from BIL filename
    std::string GetHeaderFileName(const short type);
 
-   double DerefToDouble(char* cbuffer);
 
 };
 

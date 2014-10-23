@@ -872,7 +872,7 @@ int main(int argc,char* argv[])
    //----------------------------------------------------------------------
    try
    {
-      bilout=new BILWriter(strppoutFileName,BILWriter::float64,navigation->TotalScans(),viewvectorsscanline->NumberItems(),3,'a');
+      bilout=new BILWriter(strppoutFileName,FileWriter::float64,navigation->TotalScans(),viewvectorsscanline->NumberItems(),3,'a');
       bilout->AddToHdr("projection = Geographic Lat/Lon");
       bilout->AddToHdr("datum ellipsoid = "+ellipsoid->Name());
       //Add band names
@@ -1105,7 +1105,7 @@ int main(int argc,char* argv[])
             //Open up a bil file to write to
             try
             {
-               BILWriter* dataout=new BILWriter(strAtmosOutFilename,BILWriter::float64,navigation->TotalScans(),viewvectorsscanline->NumberItems(),nbandsatmosfile,'a');
+               BILWriter* dataout=new BILWriter(strAtmosOutFilename,FileWriter::float64,navigation->TotalScans(),viewvectorsscanline->NumberItems(),nbandsatmosfile,'a');
                //Add band names
                dataout->AddToHdr("band names = {View azimuth, View zenith, Distance, DEM slope, DEM aspect}");
                dataout->AddToHdr(";View azimuth and DEM aspect (azimuth) are measured clockwise from North in degrees.");
@@ -1167,12 +1167,9 @@ int main(int argc,char* argv[])
             if(tminlon < minlon)
                minlon=tminlon;
 
-            //Create a BIL writer to handle the output
-            //BILWriter bil(strppoutFileName,BILWriter::float64,navigation->TotalScans(),viewvectorsscanline->NumberItems(),3,'a');
             bilout->WriteBandLine((char*)Plon);
             bilout->WriteBandLine((char*)Plat);
             bilout->WriteBandLine((char*)Pheight);
-            //bil.Close();
          }
          catch(BILWriter::BILexception e)
          {

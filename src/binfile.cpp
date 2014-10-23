@@ -13,25 +13,50 @@
 //-------------------------------------------------------------------------
 // BinFile Constructor - takes filename as argument
 //-------------------------------------------------------------------------
-
-
 BinFile::BinFile(std::string filename)
 {
+   //Need to identify if a single bil/bsq has been passed or if it is a
+   //ascii file with a list of bil/bsq filenames within
+   bool SINGLEFILE=true;
    br=NULL;
-   br=new BinaryReader(filename);
-   BinaryReader::interleavetype ft=br->GetFileStyle();
+   try
+   {
+      //If it opens correctly we assume it is a normal bil/bsq
+      br=new BinaryReader(filename);
+   }
+   catch(BinaryReader::BRexception bre)
+   {
+      //something other than no hdr file happened ... throw it
+      if(bre.info.find("Unable to open a hdr file, does one exist?")==std::string::npos)
+         throw bre;
 
-   delete br;
-   br=NULL;
+      //A no hdr found error - could be because it is a multifile
+      SINGLEFILE=false;
+      br=NULL;
+   }
 
-   if(ft==BinaryReader::BSQ)
-      br=new BSQReader(filename);
-   else if(ft==BinaryReader::BIL)
-      br=new BILReader(filename);      
+   if(SINGLEFILE)
+   {
+      //Get the interleave type and open an instance of that type of file reader
+      BinaryReader::interleavetype ft=br->GetFileStyle();
+
+      delete br;
+      br=NULL;
+
+      if(ft==BinaryReader::BSQ)
+         br=new BSQReader(filename);
+      else if(ft==BinaryReader::BIL)
+         br=new BILReader(filename);      
+      else
+         throw "Error. Interleave type in file: "+filename+" is not bsq or bil.";
+   }
    else
-      throw "Error. Iterleave type in file: "+filename+" is not bsq or bil.";
-
+   {
+      //Try and open a multi file type reader
+      br=new MultiFile(filename);
+   }
 }
+
 //-------------------------------------------------------------------------
 // BinFile dectructor
 //-------------------------------------------------------------------------

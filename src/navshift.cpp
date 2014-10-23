@@ -149,31 +149,31 @@ void TrimLevel1Data(std::string strLevel1File,std::string strTrimmedLevel1File,u
    switch(bilIn.GetDataType())
    {
    case 1:
-      bilOut=new BILWriter(strTrimmedLevel1File,BILWriter::char8,(end-start+1),inSamples,inBands,'w');
+      bilOut=new BILWriter(strTrimmedLevel1File,FileWriter::char8,(end-start+1),inSamples,inBands,'w');
       ReadWriteData<char>(&bilIn,bilOut,start,end);
       break;
    case 2:
-      bilOut=new BILWriter(strTrimmedLevel1File,BILWriter::int16,(end-start+1),inSamples,inBands,'w');
+      bilOut=new BILWriter(strTrimmedLevel1File,FileWriter::int16,(end-start+1),inSamples,inBands,'w');
       ReadWriteData<short int>(&bilIn,bilOut,start,end);
       break;
    case 3:
-      bilOut=new BILWriter(strTrimmedLevel1File,BILWriter::int32,(end-start+1),inSamples,inBands,'w');
+      bilOut=new BILWriter(strTrimmedLevel1File,FileWriter::int32,(end-start+1),inSamples,inBands,'w');
       ReadWriteData<int>(&bilIn,bilOut,start,end);
       break;
    case 4:
-      bilOut=new BILWriter(strTrimmedLevel1File,BILWriter::float32,(end-start+1),inSamples,inBands,'w');
+      bilOut=new BILWriter(strTrimmedLevel1File,FileWriter::float32,(end-start+1),inSamples,inBands,'w');
       ReadWriteData<float>(&bilIn,bilOut,start,end);
       break;
    case 5:
-      bilOut=new BILWriter(strTrimmedLevel1File,BILWriter::float64,(end-start+1),inSamples,inBands,'w');
+      bilOut=new BILWriter(strTrimmedLevel1File,FileWriter::float64,(end-start+1),inSamples,inBands,'w');
       ReadWriteData<double>(&bilIn,bilOut,start,end);
       break;
    case 12:
-      bilOut=new BILWriter(strTrimmedLevel1File,BILWriter::uint16,(end-start+1),inSamples,inBands,'w');
+      bilOut=new BILWriter(strTrimmedLevel1File,FileWriter::uint16,(end-start+1),inSamples,inBands,'w');
       ReadWriteData<unsigned short int>(&bilIn,bilOut,start,end);
       break;
    case 13:
-      bilOut=new BILWriter(strTrimmedLevel1File,BILWriter::uint32,(end-start+1),inSamples,inBands,'w');
+      bilOut=new BILWriter(strTrimmedLevel1File,FileWriter::uint32,(end-start+1),inSamples,inBands,'w');
       ReadWriteData<unsigned int>(&bilIn,bilOut,start,end);
       break;
    default:
@@ -541,7 +541,7 @@ int main (int argc, char* argv[])
    try
    {
       //try and open the output file
-      BILWriter navOut(strOutputNavFile,BILWriter::float64,number_of_offset_scans,1,7,'w');
+      BILWriter navOut(strOutputNavFile,FileWriter::float64,number_of_offset_scans,1,7,'w');
       //Create a buffer of size 1 line * 1 sample * 7 bands
       double* buffer=new double[7];
       Logger::Log("Writing out new navigation file...");

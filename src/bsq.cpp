@@ -326,3 +326,78 @@ void BSQReader::ReadlineToDoubles(double* const ddata,unsigned int line)
    delete[] chtmp;
 }
 
+//-------------------------------------------------------------------------
+// Functon to read a rectangle from a BSQ (DEM) file 
+// - This is just a direct copy of the BILReader function since number
+// of bands has to be 1 for the DEM file. Done this way to allow future
+// update to multiple band files if ever required
+//-------------------------------------------------------------------------
+int BSQReader::ReadRect(char* const chdata,const int minrow, const int maxrow,const int mincol,const int maxcol)
+{
+   if(numbands!=1)
+      throw "ReadRect should currently only be used for files with 1 band.";
+
+   //Check input parameters and throw exception if they are not in correct order
+   if ((maxrow < minrow) || (maxcol < mincol))
+      throw "Order of elements in BSQReader.ReadRect should be llx,lly urx,ury. Min row/col is greater than max row/col.";
+
+   //Get the extent of the area in rows/cols
+   unsigned int numlines=(unsigned int)(maxrow-minrow+1);
+   unsigned int numsamps=(unsigned int)(maxcol-mincol+1);
+
+   //Convert these to byte positions within the BSQ file and the
+   //number of bytes for each line to read. Then use bil->Readbytes
+   //methodology.
+   uint64_t numofbytesperline=numsamps*this->GetDataSize();
+   DEBUGPRINT("Will read "<<numsamps<<" samples of data with size "<<this->GetDataSize()<<" bytes from "<<numlines<<" lines.")
+
+   //Loop through each of the lines reading in the required part, storing in chdata
+   for(unsigned int l=0;l<numlines;l++)
+   {
+      //For each line to read from - read in some data
+      ReadPartOfLine(&chdata[l*numofbytesperline],l+(unsigned int)minrow,(unsigned int)mincol,numsamps);
+   }
+   return 0;
+
+}
+
+//-------------------------------------------------------------------------
+// Function to read in part of a line from a BSQ (DEM) file
+//-------------------------------------------------------------------------
+void BSQReader::ReadPartOfLine(char* const chdata,const unsigned int lineno,const unsigned int sampleno,const unsigned int nsamps)
+{
+   if(this->IsGood() == false)
+   {
+      DEBUGPRINT("ReadPartOfLine has failed...stream not good.") 
+      this->brinfo<<"ReadPartOfLine has failed...stream not good."<<std::endl;   
+      throw BRexception(brinfo.str());
+   }
+
+   //DEBUG statement
+   DEBUGPRINT("Reading Part Of Line from BinaryFile..."<<nsamps<<" samples starting at sample "<<sampleno<<" of line "<<lineno);
+
+   //number of bytes that should be read from the file
+   uint64_t nbytestoread=(nsamps * this->GetDataSize() );
+
+   //position to move file get pointer to
+   uint64_t pos=0;
+   
+   //Check that there are nbytestoread left in the file, if not then throw exception
+   if(this->CheckCapacity(nbytestoread))
+   {
+      //Store the previous position
+      this->prevpointerloc=FileTell(filein);
+      //Skip pointer to new location
+      pos=lineno*this->numsamples*this->GetDataSize() + sampleno*this->GetDataSize();
+      //this->filein.seekg(pos,std::ios::beg);
+      FileSeek(filein,pos,SEEK_SET);
+      //Read in the length of data
+      fread(chdata,sizeof(char),nbytestoread,filein);
+   }
+   else
+   {
+      brinfo<<"Attempted to read "<<nbytestoread<<" but file reports there are less bytes remaining to be read"<<std::endl;
+      throw BRexception(brinfo.str());
+   }
+}
+

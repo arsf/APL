@@ -14,6 +14,7 @@
 #include "binaryreader.h"
 #include "bil.h"
 #include "bsq.h"
+#include "multifile.h"
 
 //-------------------------------------------------------------------------
 // Class to use for BIL/BSQ reader - make an instance of this one to use
@@ -44,7 +45,7 @@ public:
    virtual unsigned int GetDataType() const {return br->GetDataType();}
    virtual void Close(){br->Close();br=NULL;}
    virtual std::string HeaderDump(bool ret){return br->HeaderDump(ret);}
-   virtual std::string TidyForHeader(std::string totidy){return br->TidyForHeader(totidy);}
+   virtual std::string TidyForHeader(std::string totidy,bool wrapinbraces=false){return br->TidyForHeader(totidy,wrapinbraces);}
    virtual uint64_t GetFileSize() const {return br->GetFileSize();}
    virtual std::map<std::string, std::string, cmpstr> CopyHeader()const{return br->CopyHeader();}
 
@@ -54,6 +55,11 @@ public:
    virtual std::string MissingHeaderItemError()const{return br->MissingHeaderItemError();}
 
    virtual std::string GetFileName()const{return br->GetFileName();}
+
+   virtual uint64_t NumLines()const{return br->NumLines();}
+   virtual uint64_t NumSamples()const{return br->NumSamples();}
+   virtual uint64_t NumBands()const{return br->NumBands();}
+
 protected:
    BinaryReader* br;
 };

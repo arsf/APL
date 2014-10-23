@@ -63,11 +63,11 @@ const std::string availableopts[number_of_possible_options]={
 //Descriptions of option that can be on command line
 //-------------------------------------------------------------------------
 const std::string optsdescription[number_of_possible_options]={
-"Raw Eagle/Hawk filename",
+"Raw Eagle/Hawk/Fenix filename",
 "Calibration filename (excluding .cal extension)",
 "Name of output radiometrically calibrated BIL file.",
 "Name of file containing dark frames. Default is to use dark frames from the input raw image.",
-"Sensor ID 'e' for Eagle, 'h' for Hawk. Default is to auto detect from file.",
+"Sensor ID 'e' for Eagle, 'h' for Hawk, 'f' for Fenix. Default is to auto detect from file.",
 "Define a section of the image to process using a start and end scan line number. Default is for full image.",
 "Flips the data spatially (left to right). This is default for Hawk.",
 "Flips the data spectrally (red to blue). This is default for Eagle.",
@@ -77,7 +77,7 @@ const std::string optsdescription[number_of_possible_options]={
 "Do not insert missing frames into the output data.",
 "Do not subtract the dark frames from the raw data.",
 "Do not convert the DN to radiance.",
-"Do not apply the smear correction to Eagle data (no effect for Hawk data)",
+"Do not apply the smear correction to Eagle data (no effect for Hawk or Fenix data)",
 "Outputs the average dark values to a BIL file of given name",
 "Outputs the binned calibration gain values to a BIL file of given name.",
 "A space separated list of scan lines to ignore and mark as corrupt.",
@@ -247,7 +247,7 @@ int main(int argc,char* argv[])
       if(cl->OnCommandLine("-sensor"))
       {
          std::string strSensor=cl->GetArg("-sensor"); //get the sensor id ('e'agle or 'h'awk)
-         if((strSensor.compare("h")!=0)&&(strSensor.compare("e")!=0))
+         if((strSensor.compare("h")!=0)&&(strSensor.compare("e")!=0)&&(strSensor.compare("f")!=0))
          {
             //unrecognised sensor type
             throw CommandLine::CommandLineException("Sensor type "+strSensor+" is unrecognised.");         
@@ -482,9 +482,10 @@ int main(int argc,char* argv[])
       }
       else
       {
+         //Flip the bands (i.e. red to blue) if given on command line or if an Eagle sensor.
          if((cl->OnCommandLine("-FLIPBANDS"))||(CheckSensorID(EAGLE,job->sensor->SensorID()) ))
             DO_FLIP_BANDS=true; 
-
+         //Flip the sample (i.e. left to right) if given on command line or if a Hawk sensor.
          if((cl->OnCommandLine("-FLIPSAMPLES"))||(CheckSensorID(HAWK,job->sensor->SensorID()) ))
             DO_FLIP_SAMPLES=true; 
       }
@@ -499,9 +500,14 @@ int main(int argc,char* argv[])
       //----------------------------------------------------------------------
       if((startline == 0)&&(endline == 0))
       {
+         //If Fenix we skip first frame as it is essentially junk due to the missing frames that follow
+         if(CheckSensorID(FENIX,job->sensor->SensorID()))
+            startline=1;
          //We want to set endline to be the last line in the raw image to calibrate
          //i.e. do not include missing scans etc
-         endline = job->sensor->br->GetNumImageFrames();
+         endline = job->sensor->GetNumImageFrames();
+         //Set these manually to be safe
+         job->SetLineLimits(startline,endline);
       }
       else
       {
@@ -509,7 +515,17 @@ int main(int argc,char* argv[])
          //If startline is not 0 check earlier lines for missing frames
          //this is important for syncing the data in aplnav
          if(startline!=0)
-            job->SetDroppedScansPriorToStartLine(job->sensor->br->GetMissingFramesBetweenLimits(0,startline));
+         {
+            //If fenix sensor then we need to only search from frame 1 as we ignore frame 0 (since there are many missing frames between 0 and 1)
+            if(CheckSensorID(FENIX,job->sensor->SensorID()))
+            {
+               job->SetDroppedScansPriorToStartLine(job->sensor->GetMissingFramesBetweenLimits(1,startline));               
+            }
+            else
+            {
+               job->SetDroppedScansPriorToStartLine(job->sensor->GetMissingFramesBetweenLimits(0,startline));
+            }
+         }
       }
 
       //----------------------------------------------------------------------
@@ -519,9 +535,9 @@ int main(int argc,char* argv[])
       //----------------------------------------------------------------------
       job->InitialiseCalibration(strCalibFileName,strDarkFileName,strQCFailureFileName);
 
-      Logger::Log("Number of frames of image (minus dark frames) should be: "+ToString(job->sensor->br->GetNumImageFrames()));
-      Logger::Log("Number of dark frames is: "+ToString(job->sensor->br->GetNumDarkFrames()));      
-      Logger::Log("Number of missing frames is: "+ToString(job->sensor->br->GetTotalMissingFrames()));
+      Logger::Log("Number of frames of image (minus dark frames) should be: "+ToString(job->sensor->GetNumImageFrames()));
+      Logger::Log("Number of dark frames is: "+ToString(job->sensor->GetNumDarkFrames()));      
+      Logger::Log("Number of missing frames is: "+ToString(job->sensor->GetTotalMissingFrames()));
       Logger::Log("\nNumber of frames in final calibrated image will be: "+ToString(job->GetNumCalibratedImageLines()));
       Logger::Log("Number of samples in final calibrated image will be: "+ToString(job->GetNumCalibratedImageSamples()));
 
@@ -530,10 +546,16 @@ int main(int argc,char* argv[])
       //----------------------------------------------------------------------      
       if(OUTPUT_AVERAGED_DARKFRAMES)
       {
-         Logger::Log("Outputting average dark frames to file: "+strAverageDarkFramesFile);
-         BILWriter avdark(strAverageDarkFramesFile,avdark.float32,1,job->sensor->NumSamples(),job->sensor->NumBands(),'w');
-         avdark.WriteDataToLineSection(job->cal->pData()->AverageDark(),job->sensor->NumSamples(),0,job->sensor->NumSamples()-1);
-         avdark.Close();
+         for(unsigned int subsensor=0;subsensor<job->cal->NumOfSubSensors();subsensor++)
+         {
+            if(job->cal->NumOfSubSensors() > 1)
+               strAverageDarkFramesFile=strAverageDarkFramesFile+ToString(subsensor)+".bil";;
+            Logger::Log("Outputting average dark frames to file: "+strAverageDarkFramesFile);
+            job->cal->ChangeSubSensor(subsensor);
+            BILWriter avdark(strAverageDarkFramesFile,avdark.float32,1,job->sensor->NumSamples(),job->sensor->NumBands(),'w');
+            avdark.WriteDataToLineSection(job->cal->pData()->AverageDark(),job->sensor->NumSamples(),0,job->sensor->NumSamples()-1);
+            avdark.Close();
+         }
       }
 
       //----------------------------------------------------------------------
@@ -554,7 +576,12 @@ int main(int argc,char* argv[])
          //increasing by 1 or more and insert missing scans if appropriate
          //only do this if missing scans are requested to be inserted
          //----------------------------------------------------------------------
-         if(job->GetTask(MainWorker::insert_missing_scans))
+         if(CheckSensorID(FENIX,job->sensor->SensorID()) && (line==1))
+         {
+            //Skip adding missing frames after first line of FENIX
+            Logger::Log("Will not add missing frames for Fenix sensor between first two scans as these are purposefully dropped - we instead process from frame 2.");
+         }
+         else if(job->GetTask(MainWorker::insert_missing_scans))
          {
             if(line > startline)
             {
@@ -563,8 +590,13 @@ int main(int argc,char* argv[])
                {
                   //Missing frames - need to insert (frameincrease - 1) frames
                   Logger::Log("Missing scan detected: "+ToString(frameincrease-1)+" line(s) at raw line "+ToString(line));
-                  for(int i=0;i<frameincrease-1;i++)
-                     job->WriteOutData(MainWorker::MissingScan);
+                  //For each subsensor we need to write out the data
+                  for(unsigned int ss=0;ss<job->cal->NumOfSubSensors();ss++)
+                  {
+                     job->cal->ChangeSubSensor(ss);
+                     for(int i=0;i<frameincrease-1;i++)
+                        job->WriteOutData(MainWorker::MissingScan);
+                  }
                }
                //Allow the case where it wraps (0 - 65535) and also allow for 2 dropped frame here, else throw an error
                else if((frameincrease <= -65533) &&  (frameincrease > -65535))
@@ -572,8 +604,13 @@ int main(int argc,char* argv[])
                   //Missing frames - need to insert frames
                   frameincrease = frameincrease + 65536;
                   Logger::Log("Missing scan detected: "+ToString(frameincrease-1)+" line(s) at raw line "+ToString(line));
-                  for(int i=0;i<frameincrease-1;i++)
-                     job->WriteOutData(MainWorker::MissingScan);                  
+                  for(unsigned int ss=0;ss<job->cal->NumOfSubSensors();ss++)
+                  {
+                     //For each subsensor we need to write out the data
+                     job->cal->ChangeSubSensor(ss);
+                     for(int i=0;i<frameincrease-1;i++)
+                        job->WriteOutData(MainWorker::MissingScan);                  
+                  }
                }
                else if((frameincrease <= 0) &&  (frameincrease > -65533)) 
                {
@@ -591,7 +628,12 @@ int main(int argc,char* argv[])
                //If this line is to be marked as corrupt then output 0s and skip calibration
                //----------------------------------------------------------------------
                Logger::Log("Skipping line: "+ToString(line)+" and marking it as corrupt");
-               job->WriteOutData(MainWorker::CorruptData);
+               //For each subsensor we need to write out the data
+               for(unsigned int ss=0;ss<job->cal->NumOfSubSensors();ss++)
+               {
+                  job->cal->ChangeSubSensor(ss);
+                  job->WriteOutData(MainWorker::CorruptData);
+               }
                linecorrupt=true;
                break;
             }
@@ -601,7 +643,29 @@ int main(int argc,char* argv[])
          //Calibrate this line of data and write it out
          //----------------------------------------------------------------------
          if(linecorrupt==false)
-            job->DoCalibrationForLine(line);
+         {
+
+            if(CheckSensorID(FENIX,job->sensor->SensorID()))
+            {
+               //----------------------------------------------------------------------
+               // If FENIX then set up for VNIR and calibrate this line for this subsensor
+               //----------------------------------------------------------------------
+               job->cal->ChangeSubSensor(0);
+               job->DoCalibrationForLine(line);
+               //----------------------------------------------------------------------
+               // If FENIX then set up for SWIR and calibrate this line for this subsensor
+               //----------------------------------------------------------------------
+               job->cal->ChangeSubSensor(1);
+               job->DoCalibrationForLine(line);
+            }
+            else
+            {
+               //----------------------------------------------------------------------
+               // Calibrate the line of data
+               //----------------------------------------------------------------------
+               job->DoCalibrationForLine(line);
+            }
+         }
          else
             linecorrupt=false;
       }
@@ -611,10 +675,16 @@ int main(int argc,char* argv[])
       //----------------------------------------------------------------------
       if(OUTPUT_BINNED_GAINS)
       {
-         Logger::Log("Outputting binned gains to file: "+strBinnedGainsFile);
-         BILWriter gains(strBinnedGainsFile,gains.float32,1,job->sensor->NumSamples(),job->sensor->NumBands(),'w');
-         gains.WriteDataToLineSection(job->cal->pData()->Gains(),job->sensor->NumSamples(),0,job->sensor->NumSamples()-1);
-         gains.Close();
+         for(unsigned int subsensor=0;subsensor<job->cal->NumOfSubSensors();subsensor++)
+         {
+            if(job->cal->NumOfSubSensors() > 1)
+               strBinnedGainsFile=strBinnedGainsFile+ToString(subsensor)+".bil";
+            Logger::Log("Outputting binned gains to file: "+strBinnedGainsFile);
+            job->cal->ChangeSubSensor(subsensor);
+            BILWriter gains(strBinnedGainsFile,gains.float32,1,job->sensor->NumSamples(),job->sensor->NumBands(),'w');
+            gains.WriteDataToLineSection(job->cal->pData()->Gains(),job->sensor->NumSamples(),0,job->sensor->NumSamples()-1);
+            gains.Close();
+         }
       }
 
       //----------------------------------------------------------------------     

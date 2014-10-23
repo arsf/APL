@@ -120,8 +120,9 @@ void SBETData::Reader()
 
 SpecimNavData::SpecimNavData()
 {
-   this->synctime=NULL;
+   this->syncdelay=NULL;
    this->syncgps=NULL;
+   this->syncframe=NULL;
    use_persecond=false;
 }
 
@@ -132,8 +133,9 @@ SpecimNavData::SpecimNavData(const std::string filename)
 {   
    //Copy the filename over
    this->filename=filename;
-   this->synctime=NULL;
+   this->syncdelay=NULL;
    this->syncgps=NULL;
+   this->syncframe=NULL;
    use_persecond=false;
 }
 
@@ -142,33 +144,72 @@ SpecimNavData::SpecimNavData(const std::string filename)
 //-------------------------------------------------------------------------
 SpecimNavData::~SpecimNavData()
 {
-   if(synctime!=NULL)
-      delete[] synctime;
+   if(syncdelay!=NULL)
+      delete[] syncdelay;
    if(syncgps!=NULL)
       delete[] syncgps;
+   if(syncframe!=NULL)
+      delete[] syncframe;
 }
+
+// TODO FIXME: When we are clear on how these per-second files should be parsed and (hopefully)
+//    have removed the timing SCT we should re-write this function and the parsing code to be sensible.
 
 // Function to use the per second sync messages (SPTSMP) instead of the SPTSMP2 one
 // Primarily for use when there are no SPTSMP messages in the file
-void SpecimNavData::UsePerSecondForSync()
+bool SpecimNavData::UsePerSecondForSync()
 {
    if(use_persecond==true)
    {
       //Delete the syncgps and times from the SPTSMP2 messages if there are any
       if(syncgps!=NULL)
          delete[] syncgps;
-      if(synctime!=NULL)
-         delete[] synctime;
-      //Now create arrays of size 1 for the 1 sync message we will create
-      numsyncs=1;
-      syncgps=new int[1];
-      synctime=new double[1];
-      //Get the first SPTSMP message delay value - to make it like an SPTSMP2 one we want 1-delay
-      synctime[0]=1-persecond_synctime.front();
-      //Get the corresponding GPS time stamp for message - to make it same code for SPTSMP2 we want to plus 1
-      syncgps[0]=persecond_syncgps.front() + 1;
-      std::cout<<"sync time: "<<synctime[0]<<" sync_gps: "<<syncgps[0]<<std::endl;
+      if(syncdelay!=NULL)
+         delete[] syncdelay;
+      if(syncframe!=NULL)
+         delete[] syncframe;
+
+      //Now create arrays of size of number of sync messages for the sync messages we will create
+      numsyncs=persecond_syncdelay.size();
+      syncgps=new int[numsyncs];
+      syncdelay=new double[numsyncs];
+      syncframe=new int[numsyncs];
+      int wrap_offset=10000; //Frame number in specim timestamp message appears to wrap at 10000
+      for(unsigned int i=0;i<numsyncs;i++)
+      {
+         //Get the SPTSMP message delay value - to make it like an SPTSMP2 one we want 1-delay  
+         syncdelay[i]=1-persecond_syncdelay[i]; // because we want 1-delay
+         //Get the corresponding GPS time stamp for message - to make it same code for SPTSMP2 we want to plus 1
+         syncgps[i]=persecond_syncgps[i]+1;// +1 because we want to use 1-delay from next second (as opposed to this second + delay)
+         //Now need to check if this is the same as previous time stamp - as this occurs occaisonally due to the drift in the GPGGA time stamp
+         if((i>=1)&&(syncgps[i] == syncgps[i-1]))
+         {
+            //It is the same as the previous one so we increase it by 1 - and for each subsequent sync time too
+            syncgps[i] += 1;
+         }
+         else if((i>=1)&&(syncgps[i] == (syncgps[i-1]+2)))
+         {
+            //A gap occurred when there were 2 consequetive GPGGA messages without a SPTSMP between them
+            //So we should subtract one of the times here
+            syncgps[i] -= 1;
+         }
+         //Get the frame number that it applies to - this apparently wraps at 10000 so take it into account
+         syncframe[i]=persecond_frame[i]-1; // offset frame number to be 0 referenced
+         if((i>0)&&(syncframe[i] < syncframe[i-1]))
+         {
+            //in case a 2nd(or higher) number of wraps has occurred
+            if(syncframe[i] - syncframe[i-1] < - wrap_offset )
+               wrap_offset += 10000;
+
+            if(syncframe[i] - syncframe[i-1] > - wrap_offset )
+            {
+               syncframe[i] += wrap_offset;
+            }
+         }
+         std::cout<<"sync time: "<<syncdelay[i]<<" sync_gps: "<<syncgps[i]<<" frame: "<<syncframe[i]<<std::endl; 
+      }      
    }
+   return use_persecond;
 }
 
 
@@ -389,7 +430,7 @@ NMEASpecimNavData::NMEASpecimNavData(std::string filename)
    navcollection=new NavDataCollection(numentries);
    if(numsyncs!=0)
    {
-      synctime=new double[numsyncs];
+      syncdelay=new double[numsyncs];
       syncgps=new int[numsyncs];
    }
    else
@@ -536,7 +577,7 @@ void NMEASpecimNavData::Reader()
       {
          //Get a line from the file - maybe getline is better in case of rogue spaces?
          fin>>line;
-         //Get the key to the mssage type
+         //Get the key to the message type
          message_key=GetItemFromString(line,0,delim);
 
          if(message_key.compare("$GPGGA")==0)
@@ -608,11 +649,12 @@ void NMEASpecimNavData::Reader()
             //Test if object is bad - most likely because it is incomplete
             if(sptsmp->Bad()==false)
             {
-               persecond_synctime.push_back(sptsmp->delay);
-               if(record!=0)
-                  persecond_syncgps.push_back((int)(navcollection->GetValue(record-1,NavDataCollection::TIME)));
-               else
+               persecond_syncdelay.push_back(sptsmp->delay);
+               persecond_frame.push_back(sptsmp->framenumber);
+               if(record==0)
                   persecond_syncgps.push_back(-1); //Get at a later point when we have the next record - store as -1 (assume time is never -ve)
+               else
+                  persecond_syncgps.push_back((int)(navcollection->GetValue(record-1,NavDataCollection::TIME)));
             }
             delete sptsmp;            
          }
@@ -624,7 +666,7 @@ void NMEASpecimNavData::Reader()
             //Test if object is bad - most likely because it is incomplete
             if(sptsmp2->Bad()==false)
             {
-               synctime[sync]=sptsmp2->delayvalue;
+               syncdelay[sync]=sptsmp2->delayvalue;
                //Also store GPS time (integer part) 
                if(record!=0)
                   syncgps[sync]=(int)(navcollection->GetValue(record-1,NavDataCollection::TIME) +1);
@@ -654,7 +696,7 @@ void NMEASpecimNavData::Reader()
       }
    }
    //And do the same for the persecond message arrays too
-   for(std::list<int>::iterator it=persecond_syncgps.begin();it!=persecond_syncgps.end();it++)
+   for(std::vector<int>::iterator it=persecond_syncgps.begin();it!=persecond_syncgps.end();it++)
    {
       if((*it)==-1)
       {
@@ -771,7 +813,7 @@ BinSpecimNavData::BinSpecimNavData(std::string filename)
 
    //Create array of nav data lines
    navcollection=new NavDataCollection(numentries);
-   synctime=new double[nsyncs];
+   syncdelay=new double[nsyncs];
    syncgps=new int[nsyncs];
 }
 
@@ -865,7 +907,7 @@ void BinSpecimNavData::Reader()
             if(syncm.ID()==999)
             {
                //Store the delay value (converted to seconds) 
-               synctime[sync]=(syncm.GetMessage()->delayvalue/1000.0);
+               syncdelay[sync]=(syncm.GetMessage()->delayvalue/1000.0);
                //Also store GPS time (integer part) 
                syncgps[sync]=(int)(navcollection->GetValue(record-1,NavDataCollection::TIME) +1);
                //increase sync counter
@@ -879,7 +921,7 @@ void BinSpecimNavData::Reader()
                //readin the next flag and continue
                fin.read(buffer,sizeof(short));
 
-// need to read in the 998 message here and store the synctime and syngps
+// need to read in the 998 message here and store the syncdelay and syngps
 
 
             }

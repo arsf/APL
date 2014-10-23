@@ -19,6 +19,7 @@
 #include "interpolator.h"
 #include "linesegment.h"
 #include "dataaccessor.h"
+//#include "ncwriter.h"
 
 //-------------------------------------------------------------------------
 //Template function used to copy data from a double buffer into a new buffer
@@ -41,7 +42,6 @@ class AbstractMap
 public:
    virtual ~AbstractMap(){};
    virtual void MapLineSegments(TreeGrid* tg,std::string igmfilename,std::string level1filename)=0;
-   //virtual void SetMaxInterpolationDistance(double mid){};
    virtual void AssignProjection(std::string proj)=0;
    virtual unsigned int GetOutputDataSize()=0;
 
@@ -60,7 +60,7 @@ public:
    Map();
    Map(std::string outfname,double Xpixelsize,double Ypixelsize, std::string strBandList,Area* output_area,
             std::string lev1fname,Interpolators::InterpolatorType itype,int npoints,uint64_t buffsize,
-            BILWriter::DataType datatype,std::string strRowColMappingFilename,T ndv=0,bool round=true);
+            FileWriter::DataType datatype,std::string strRowColMappingFilename,double ndv=0,bool round=true);
    ~Map();
 
    virtual void AssignProjection(std::string proj);
@@ -71,8 +71,9 @@ public:
 
    virtual void SetInterpolatorIgnoreValue(double ig){interpolator->SetIgnoreValue(ig);}
    virtual void SetInterpolatorIgnoreFlag(bool f){interpolator->SetIgnoreFlag(f);}
-   virtual void SetInterpolatorNoDataValue(T ndv){interpolator->SetNoDataValue(ndv);}
-   virtual void SetNoDataValue(T val);
+   virtual void SetInterpolatorNoDataValue(double ndv){interpolator->SetNoDataValue(ndv);}
+   virtual void SetNoDataValue(double val);
+   virtual void SetDataUnits(std::string lev1fname);
 
 private:
    double* buffer;
@@ -85,7 +86,7 @@ private:
 
    char* outputbuffer;
 
-   BILWriter* writer;
+   FileWriter* writer;
    Interpolator<T>* interpolator;
 
    void FillPixel(long int row, long int col, std::vector<Item>* points,DataAccessor<T>* lev1data);
@@ -102,7 +103,7 @@ private:
    int* l1mapping_cols;
    void UpdateL1MappingHeader();
    //value to insert into map as nodata
-   T nodatavalue;
+   double nodatavalue;
 
 };
 
@@ -160,8 +161,6 @@ Map<T>::~Map()
       delete[] l1mapping_rows;
    if(l1mapping_cols!=NULL)
       delete[] l1mapping_cols;
-
-
 }
 
 //----------------------------------------------------------------------
@@ -169,13 +168,14 @@ Map<T>::~Map()
 //----------------------------------------------------------------------
 template<class T>
 Map<T>::Map(std::string outfname,double Xpixelsize,double Ypixelsize, std::string strBandList,Area* output_area,std::string lev1fname,
-            Interpolators::InterpolatorType itype,int npoints,uint64_t buffsize,BILWriter::DataType datatype,std::string strRowColMappingFilename,T ndv,bool round)
+            Interpolators::InterpolatorType itype,int npoints,uint64_t buffsize,FileWriter::DataType datatype,std::string strRowColMappingFilename,double ndv,bool round)
 {
    Logger::Verbose("Constructing Map.");
    Logger::Verbose("Building Map Level 3 grid ... ");
    grid=new Level3Grid(Xpixelsize,Ypixelsize,strBandList,output_area,round);
    Logger::Verbose("Building Map data writer ... ");
    writer=new BILWriter(outfname,datatype,grid->NumRows(),grid->NumCols(),grid->NumBands(),'w');
+   //writer=new NCWriter(outfname,grid->NumRows(),grid->NumCols(),grid->NumBands(),'o',datatype);
    boundedwriter=fopen(outfname.c_str(), "wb" );
    if(boundedwriter==NULL)
    {
@@ -225,6 +225,9 @@ Map<T>::Map(std::string outfname,double Xpixelsize,double Ypixelsize, std::strin
    //Get the wavelengths of the data
    AssignWavelengths(lev1fname);
 
+   //Get the units of the data
+   SetDataUnits(lev1fname);
+
    //Set the segment buffer size
    SetSegmentSize(buffsize);
 
@@ -257,7 +260,7 @@ Map<T>::Map(std::string outfname,double Xpixelsize,double Ypixelsize, std::strin
    //and create the arrays to hold the data
    if(strRowColMappingFilename.compare("")!=0)
    {
-      l1mappingwriter=new BILWriter(strRowColMappingFilename,BILWriter::int32,grid->NumRows(),grid->NumCols(),2,'w');
+      l1mappingwriter=new BILWriter(strRowColMappingFilename,FileWriter::int32,grid->NumRows(),grid->NumCols(),2,'w');
       boundedl1mappingwriter=fopen(strRowColMappingFilename.c_str(), "wb" );
       if(boundedl1mappingwriter==NULL)
       {
@@ -285,14 +288,77 @@ Map<T>::Map(std::string outfname,double Xpixelsize,double Ypixelsize, std::strin
 }
 
 //----------------------------------------------------------------------
+// Assign the data units (if available)
+//----------------------------------------------------------------------
+template<class T>
+void Map<T>::SetDataUnits(std::string lev1fname)
+{
+   BinFile lev1(lev1fname);
+   if(lev1.FromHeader("Radiance data units").compare("")!=0)
+      writer->AddMetadata("data units",lev1.FromHeader("Radiance data units"));
+}
+
+
+//----------------------------------------------------------------------
 // Assign the no data value
 //----------------------------------------------------------------------
 template<class T>
-void Map<T>::SetNoDataValue(T val)
+void Map<T>::SetNoDataValue(double val)
 {
    nodatavalue=val;
    SetInterpolatorNoDataValue(nodatavalue);
-   writer->AddToHdr("data ignore value = "+ToString(nodatavalue));
+   //Cast the nodatavalue to the type being written, to be added to the file metadata
+   //This is so that the value will represent the same in the output file if downcasting occurs
+   //Test if writing to netCDF file - if so add the fillvalue attribute of the netcdf variable
+//   NCWriter* tmpwriter=NULL;
+
+   switch(writer->GetDataType())
+   {
+      case 1:
+         writer->AddMetadata("data ignore value",ToString(static_cast<char>(nodatavalue)));
+//         tmpwriter=dynamic_cast<NCWriter*>(writer);
+//         if (tmpwriter!=NULL)
+//            tmpwriter->SetNoDataValue(static_cast<char>(nodatavalue));
+         break;
+      case 2:
+         writer->AddMetadata("data ignore value",ToString(static_cast<short>(nodatavalue)));
+//         tmpwriter=dynamic_cast<NCWriter*>(writer);
+//         if (tmpwriter!=NULL)
+//            tmpwriter->SetNoDataValue(static_cast<short>(nodatavalue));  
+         break;
+      case 3:
+         writer->AddMetadata("data ignore value",ToString(static_cast<int>(nodatavalue)));
+//         tmpwriter=dynamic_cast<NCWriter*>(writer);
+//         if (tmpwriter!=NULL)
+//            tmpwriter->SetNoDataValue(static_cast<int>(nodatavalue));  
+         break;
+      case 4:
+         writer->AddMetadata("data ignore value",ToString(static_cast<float>(nodatavalue)));
+//         tmpwriter=dynamic_cast<NCWriter*>(writer);
+//         if (tmpwriter!=NULL)
+//            tmpwriter->SetNoDataValue(static_cast<float>(nodatavalue));
+         break;
+      case 5:
+         writer->AddMetadata("data ignore value",ToString(static_cast<double>(nodatavalue)));
+//         tmpwriter=dynamic_cast<NCWriter*>(writer);
+//         if (tmpwriter!=NULL)
+//            tmpwriter->SetNoDataValue(static_cast<double>(nodatavalue));  
+         break;
+      case 12:
+         writer->AddMetadata("data ignore value",ToString(static_cast<unsigned short>(nodatavalue)));
+//         tmpwriter=dynamic_cast<NCWriter*>(writer);
+//         if (tmpwriter!=NULL)
+//            tmpwriter->SetNoDataValue(static_cast<unsigned short>(nodatavalue)); 
+         break;
+      case 13:
+         writer->AddMetadata("data ignore value",ToString(static_cast<unsigned int>(nodatavalue)));
+//         tmpwriter=dynamic_cast<NCWriter*>(writer);
+//         if (tmpwriter!=NULL)
+//            tmpwriter->SetNoDataValue(static_cast<unsigned int>(nodatavalue)); 
+         break;
+      default:
+         throw "Unknown data type in SetNoDataValue";
+   }
 }
 
 //----------------------------------------------------------------------
@@ -309,9 +375,9 @@ void Map<T>::AssignWavelengths(std::string lev1fname)
       //get the wavelength of the data for this band
       grid->AddWavelength(lev1.FromHeader("wavelength",ba));
    }
-   writer->AddToHdr("band names = {"+grid->Wavelengths()+"}");
+   writer->AddMetadata("band names","{"+grid->Wavelengths()+"}");
    //Also copy over the wavelengths too incase further envi analysis
-   writer->AddToHdr("wavelength = {"+grid->Wavelengths()+"}");
+   writer->AddMetadata("wavelength","{"+grid->Wavelengths()+"}");
 }
 
 //----------------------------------------------------------------------
@@ -320,10 +386,10 @@ void Map<T>::AssignWavelengths(std::string lev1fname)
 template<class T>
 void Map<T>::AssignProjection(std::string proj)
 {
-   writer->AddToHdr("map info = "+grid->MapInfo(proj));   
+   writer->AddMetadata("map info",grid->MapInfo(proj));   
    //Also add it to the l1mapping file if created
    if(l1mappingwriter!=NULL)
-      l1mappingwriter->AddToHdr("map info = "+grid->MapInfo(proj));   
+      l1mappingwriter->AddMetadata("map info",grid->MapInfo(proj));   
 }
 
 //----------------------------------------------------------------------
@@ -333,7 +399,7 @@ template<class T>
 void Map<T>::UpdateL1MappingHeader()
 {
    l1mappingwriter->AddToHdr(";This file contains the level-1 row/column identifiers that were used to fill in the mapped file.");
-   l1mappingwriter->AddToHdr("band names = {row value, column value}");   
+   l1mappingwriter->AddMetadata("band names","{row value, column value}");   
 }
 
 //----------------------------------------------------------------------
@@ -444,7 +510,6 @@ void Map<T>::TransformDataType(unsigned int datatype,unsigned long int start,uns
          break;
    }
 }
-
 //----------------------------------------------------------------------
 // Function to perform the mapping by splitting the line up into segments
 //----------------------------------------------------------------------
@@ -741,10 +806,11 @@ bounds[1]=*(colbounds.end()-1);
             //need to set bounds to min/max here - else implement a loop to write data for each section of bounds.
             //assuming buffer is always reset to 0s then it is fine to output between min/max bounds.
             bounds[0]=lowerbound;
-            if(upperbound!=-1)
-               bounds[1]=upperbound;//bounds[1] is already equal to this but put here to make it clearer whats going on
-            else
-               bounds[1]=grid->NumCols()-1;
+            bounds[1]=upperbound;
+//            if(upperbound!=-1)
+//               bounds[1]=upperbound;//bounds[1] is already equal to this but put here to make it clearer whats going on
+//            else
+//               bounds[1]=grid->NumCols()-1;
 
             WriteBuffer(bounds,linesegment->segmentinfo,rc.row);
          }
@@ -825,23 +891,47 @@ void Map<T>::WriteBuffer(int* bounds,Level3GridInfo* segment,int thisrow)
    int boundedlength=bounds[1]-bounds[0] +1; //+1 because bounds are inclusive
    Logger::Debug("Writing data of length: "+ToString(boundedlength)+" at point "+ToString(startofboundedbuffer));
 
-   if(boundedwriter==NULL)
+   if(dynamic_cast<BILWriter*>(writer))
    {
-      throw "Bounded writer is not open!?!";
-   }
+      //Writing to BIL file
+      if(boundedwriter==NULL)
+      {
+         throw "Bounded writer is not open!?!";
+      }
 
-   unsigned long datastartcell=0;
-   fseeko64(boundedwriter,startofboundedbuffer*writer->GetDataSize(),SEEK_SET);
-   for(unsigned int b=0;b<grid->NumBands();b++)
+      unsigned long datastartcell=0;
+      fseeko64(boundedwriter,startofboundedbuffer*writer->GetDataSize(),SEEK_SET);
+      for(unsigned int b=0;b<grid->NumBands();b++)
+      {
+         datastartcell=(grid->NumCols()*b + bounds[0]);
+         TransformDataType(writer->GetDataType(),datastartcell,(datastartcell+boundedlength));
+         fwrite(&(outputbuffer[datastartcell*writer->GetDataSize()]),writer->GetDataSize(),boundedlength,boundedwriter);
+         fseeko64(boundedwriter,(grid->NumCols()-boundedlength)*writer->GetDataSize(),SEEK_CUR);
+      }
+
+      if((ferror(boundedwriter))||(feof(boundedwriter)))
+         Logger::Log("Error writing to bounded file.");
+
+   }
+//   else if(dynamic_cast<NCWriter*>(writer))
+//   {
+//      //Writing to netCDF
+//      //Loop through each band writing at a time
+//      for(unsigned int b=0;b<grid->NumBands();b++)
+//      {
+//         //Get the starting cell of the array where we want to output from
+//         unsigned long datastartcell=(grid->NumCols()*b + bounds[0]);
+//         //Transform the data type and put data into 'outputbuffer'
+//         TransformDataType(writer->GetDataType(),datastartcell,(datastartcell+boundedlength));
+//         //Write out the data starting from point (b,numrowstoskip,buffer[0]) in file, writing a length of boundedlength samples for 1 band for 1 line
+//         dynamic_cast<NCWriter*>(writer)->WriteDataAt((char*)&outputbuffer[datastartcell*writer->GetDataSize()],b,numrowstoskip,bounds[0],boundedlength,1,1);
+//      }
+//   }
+   else
    {
-      datastartcell=(grid->NumCols()*b + bounds[0]);
-      TransformDataType(writer->GetDataType(),datastartcell,(datastartcell+boundedlength));
-      fwrite(&(outputbuffer[datastartcell*writer->GetDataSize()]),writer->GetDataSize(),boundedlength,boundedwriter);
-      fseeko64(boundedwriter,(grid->NumCols()-boundedlength)*writer->GetDataSize(),SEEK_CUR);
+      //None of the above ... ?
+      throw "Unknown data writer class type in WriteBuffer().";
    }
-
-   if((ferror(boundedwriter))||(feof(boundedwriter)))
-      Logger::Log("Error writing to bounded file.");
 
    //If the level1 mapping is requested then write it out also
    if(boundedl1mappingwriter!=NULL)
@@ -864,7 +954,6 @@ void Map<T>::WriteBuffer(int* bounds,Level3GridInfo* segment,int thisrow)
    for(unsigned int i=0;i<length_of_buffer;i++)
    {
       buffer[i]=nodatavalue;
-      //outputbuffer[i]=0;
    }
 
    for(unsigned int i=0;i<length_of_buffer*writer->GetDataSize();i++)

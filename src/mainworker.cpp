@@ -22,24 +22,17 @@ MainWorker::MainWorker(std::string rawfile,std::string outfile,std::string cl,bo
    bwimage=NULL;
    eagle=NULL;
    hawk=NULL;
+   fenix=NULL;
    sensor=NULL;
 
-   sensor=new Specim(rawfile,force);
-   numbercalibratedframes=sensor->br->GetNumImageFrames() + sensor->br->GetTotalMissingFrames();
-   outputfileprefix=outfile;
-   lowersample=sensor->LowerScanlineLimit();
-   uppersample=sensor->UpperScanlineLimit();
-   startline=0;
-   nummissingscanspriortostartline=0;
-   endline=sensor->br->GetNumImageFrames();
-   commandlinetext=cl;
+   sensor=new Specim(rawfile);
 
    if(CheckSensorID(EAGLE,this->sensor->SensorID()))
    {
       Logger::Log("Eagle sensor detected - created eagle object.");
       delete sensor;
       sensor=NULL;
-      eagle=new Eagle(rawfile);
+      eagle=new Eagle(rawfile,force);
       sensor=eagle;
    }
    else if(CheckSensorID(HAWK,this->sensor->SensorID()))
@@ -47,11 +40,28 @@ MainWorker::MainWorker(std::string rawfile,std::string outfile,std::string cl,bo
       Logger::Log("Hawk sensor detected - created hawk object.");
       delete sensor;
       sensor=NULL;
-      hawk=new Hawk(rawfile);
+      hawk=new Hawk(rawfile,force);
       sensor=hawk;
+   }
+   else if(CheckSensorID(FENIX,this->sensor->SensorID()))
+   {
+      Logger::Log("Fenix sensor detected - created fenix object.");
+      delete sensor;
+      sensor=NULL;
+      fenix=new Fenix(rawfile);
+      sensor=fenix;
    }
    else
       throw "Unrecognised sensor type in raw file, got ID: "+ToString(sensor->SensorID());
+
+   numbercalibratedframes=sensor->GetNumImageFrames() + sensor->GetTotalMissingFrames();
+   outputfileprefix=outfile;
+   lowersample=sensor->LowerScanlineLimit();
+   uppersample=sensor->UpperScanlineLimit();
+   startline=0;
+   nummissingscanspriortostartline=0;
+   endline=sensor->GetNumImageFrames();
+   commandlinetext=cl;
 
    //Initialise task map to be false for everything
    tasks[remove_dark_frames]=false;
@@ -78,6 +88,7 @@ MainWorker::MainWorker(std::string rawfile,std::string outfile,char csensor,std:
    bwimage=NULL;
    eagle=NULL;
    hawk=NULL;
+   fenix=NULL;
    sensor=NULL;
 
    if(csensor=='e')
@@ -90,16 +101,21 @@ MainWorker::MainWorker(std::string rawfile,std::string outfile,char csensor,std:
       hawk=new Hawk(rawfile,force);
       sensor=hawk;
    }
+   else if(csensor=='f')
+   {
+      fenix=new Fenix(rawfile);
+      sensor=fenix;
+   }
    else
       throw "Unrecognised sensor type in raw file, got sensor char: "+ToString(csensor);
 
-   numbercalibratedframes=sensor->br->GetNumImageFrames() + sensor->br->GetTotalMissingFrames();
+   numbercalibratedframes=sensor->GetNumImageFrames() + sensor->GetTotalMissingFrames();
    outputfileprefix=outfile;
    lowersample=sensor->LowerScanlineLimit();
    uppersample=sensor->UpperScanlineLimit();
    startline=0;
    nummissingscanspriortostartline=0;
-   endline=sensor->br->GetNumImageFrames();
+   endline=sensor->GetNumImageFrames();
    commandlinetext=cl;
 
    //Initialise task map to be false for everything
@@ -124,6 +140,8 @@ MainWorker::~MainWorker()
       delete eagle;
    if(hawk!=NULL)
       delete hawk;   
+   if(fenix!=NULL)
+      delete fenix;
 
    if(bwmask!=NULL)
       bwmask->Close();
@@ -163,17 +181,24 @@ void MainWorker::InitialiseCalibration(std::string calfile,std::string externald
       lowersample=0;
    }
 
-   //If hawk - read in the bad pixel file
-   if(CheckSensorID(HAWK,this->sensor->SensorID()))
+   //If not eagle - read in the bad pixel file
+   if(!CheckSensorID(EAGLE,this->sensor->SensorID()))
    {
       cal->ReadBadPixelFile();
       //If the bad pixel file is a specim one then do not output the method file
-      if(dynamic_cast<Hawk*>(sensor)->arsfbadpixelfiletype == false)
+      //Only need to check first badpixel object as if more than 1 they all read from same file
+      if(cal->badpixels==NULL)
+      {   
+         Logger::Log("No bad pixels have been set up for this run.");  
+         tasks[output_mask_method]=false;
+      }
+      else if(cal->badpixels[0].arsfbadpixelfiletype == false)
       {
          tasks[output_mask_method]=false;
       }
       else
       {
+         tasks[output_mask_method]=true;
          cal->InitialiseBadPixMethod();
       }
       //Force the FODIS and Smear Correction to be false here
@@ -195,22 +220,21 @@ void MainWorker::InitialiseCalibration(std::string calfile,std::string externald
 unsigned int MainWorker::GetNumCalibratedImageLines()
 {
    //Check if full line is being processed or a user defined chunk
-   if((startline==0)&&(endline==sensor->br->GetNumImageFrames()))
+   if((startline==0)&&(endline==sensor->GetNumImageFrames()))
    {
       //Full line is being processed - check if missing scans are to be inserted
       if(tasks[insert_missing_scans])
-         return sensor->br->GetNumImageFrames()+sensor->br->GetTotalMissingFrames();
+         return sensor->GetNumImageFrames()+sensor->GetTotalMissingFrames();
       else
-         return sensor->br->GetNumImageFrames();
+         return sensor->GetNumImageFrames();
    }
    else
    {
       //User defined chunk of a line being processed
       //check if missing scans are to be inserted
       if(tasks[insert_missing_scans])
-         return (endline-startline)+sensor->br->GetMissingFramesBetweenLimits(startline,endline);
+         return (endline-startline)+sensor->GetMissingFramesBetweenLimits(startline,endline);
       else
-         //return sensor->br->GetNumImageFrames();      
          return (endline-startline);
    }
 }
@@ -220,10 +244,7 @@ unsigned int MainWorker::GetNumCalibratedImageLines()
 //-------------------------------------------------------------------------
 unsigned int MainWorker::GetNumCalibratedImageSamples()
 {
-   //if(tasks[define_sample_bounds]) //user defined sample limits
-      return uppersample-lowersample+1;
-   //else
-   //   return sensor->UpperScanlineLimit() - sensor->LowerScanlineLimit() +1;
+   return uppersample-lowersample+1;
 }
 
 //-------------------------------------------------------------------------
@@ -278,6 +299,17 @@ void MainWorker::InitialiseWriters()
    std::string strOutputFilename="";
    strOutputFilename=outputfileprefix;
 
+   //So that the start line is output as 0 in the hdr files for the fenix skipping of a line
+   unsigned int ammendedstartline=startline;
+   bool USEAMMENDEDSTARTLINE=false;
+   std::string ammendedstartlinecomment=";Although y start is recorded as 0, it is actually 1 for fenix files since we remove the first raw scan line due to how the nav syncing works." 
+                                        "0 is used to keep later processing chain clean as the navigation sync message is for line 1 of raw (i.e. 0 of this file).";
+   if((CheckSensorID(FENIX,this->sensor->SensorID()))&&(startline==1))
+   {
+      ammendedstartline=0;
+      USEAMMENDEDSTARTLINE=true;
+   }
+
    if(bwimage!=NULL)
    {
       //Already been initialised
@@ -288,12 +320,14 @@ void MainWorker::InitialiseWriters()
    //Create a bil writer for the main image data
    //----------------------------------------------------------------------
    Logger::Log("Will write calibrated image data to: "+strOutputFilename);
-   bwimage=new BILWriter(strOutputFilename,bwimage->uint16,GetNumCalibratedImageLines(),GetNumCalibratedImageSamples(),sensor->NumBands(),'w');
+   bwimage=new BILWriter(strOutputFilename,bwimage->uint16,GetNumCalibratedImageLines(),GetNumCalibratedImageSamples(),sensor->TotalNumBands(),'w');
    //Copy over some information from the raw hdr file to the calibrated hdr file
    TransferHeaderInfo(bwimage);
    //Add x and y start values to the level1 bil file - both zero based
    bwimage->AddToHdr("x start = "+ToString(lowersample));
-   bwimage->AddToHdr("y start = "+ToString(startline));
+   if(USEAMMENDEDSTARTLINE==true)
+      bwimage->AddToHdr(ammendedstartlinecomment);
+   bwimage->AddToHdr("y start = "+ToString(ammendedstartline));
    bwimage->AddToHdr("dropped scans before y start = "+ToString(nummissingscanspriortostartline));
    //Add command line
    bwimage->AddToHdr(";The command line used to process the data: "+commandlinetext);   
@@ -313,11 +347,11 @@ void MainWorker::InitialiseWriters()
    {
       strOutputFilename=outputfileprefix+"_FODIS.bil";
       Logger::Log("Will write calibrated FODIS data to: "+strOutputFilename);
-      bwfodis=new BILWriter(strOutputFilename,bwfodis->uint16,GetNumCalibratedImageLines(),1,sensor->NumBands(),'w');
+      bwfodis=new BILWriter(strOutputFilename,bwfodis->uint16,GetNumCalibratedImageLines(),1,sensor->TotalNumBands(),'w');
       //Add some hdr information about what the data is
       bwfodis->AddToHdr(";File containing averaged per-scan radiometrically calibrated data from the fibre optic downwelling irradiance sensor.");
-      //Units the data is in
-      bwfodis->AddToHdr("Units = "+(dynamic_cast<Eagle*>(sensor))->FodisUnits());     
+      //Units the data is in (fodis presumed to be non-NULL here)
+      bwfodis->AddToHdr("Units = "+sensor->fodis->FodisUnits());     
    }
 
    //----------------------------------------------------------------------
@@ -327,20 +361,22 @@ void MainWorker::InitialiseWriters()
    {
       strOutputFilename=outputfileprefix+"_mask.bil";
       Logger::Log("Will write calibrated image mask data to: "+strOutputFilename);
-      bwmask=new BILWriter(strOutputFilename,bwmask->uchar8,GetNumCalibratedImageLines(),GetNumCalibratedImageSamples(),sensor->NumBands(),'w');
+      bwmask=new BILWriter(strOutputFilename,bwmask->uchar8,GetNumCalibratedImageLines(),GetNumCalibratedImageSamples(),sensor->TotalNumBands(),'w');
 
       //Add some information to the header file
       //Add x and y start values to the level1 bil file - both zero based
       bwmask->AddToHdr("x start = "+ToString(lowersample));
-      bwmask->AddToHdr("y start = "+ToString(startline));
+      if(USEAMMENDEDSTARTLINE==true)
+         bwmask->AddToHdr(ammendedstartlinecomment);
+      bwmask->AddToHdr("y start = "+ToString(ammendedstartline));
       bwmask->AddToHdr("dropped scans before y start = "+ToString(nummissingscanspriortostartline));
-      std::string waves=sensor->br->FromHeader("Wavelength");      
+      std::string waves=sensor->bin->GetFromFile("Wavelength");      
       if(tasks[flip_bands])
       {
          waves=ReverseWavelengthOrder(waves);
       }
       //Tidy up wavelength array to remove {, and ,} and replace with { and }
-      waves=sensor->br->TidyForHeader(waves);
+      waves=sensor->bin->TidyForHeader(waves,true);
       bwmask->AddToHdr("Wavelength = "+waves);
       bwmask->AddToHdr("Wavelength units = nm");
       bwmask->AddToHdr(";Mask file for "+outputfileprefix);
@@ -351,7 +387,7 @@ void MainWorker::InitialiseWriters()
                       ToString(Specim::Badpixel)+" = Hawk CCD bad pixels.\n; "+
                       ToString(Specim::SmearAffected)+" = Pixel affected by uncorrected smear.\n; "+
                       ToString(Specim::DroppedScan)+" = Dropped scans.\n; "+
-                      ToString(Specim::CorruptData)+" = Corrupt raw data.\n;"+
+                      ToString(Specim::CorruptData)+" = Corrupt raw data.\n; "+
                       ToString(Specim::QCFailure)+" = Quality control failure.\n");
    }
    //----------------------------------------------------------------------
@@ -361,30 +397,31 @@ void MainWorker::InitialiseWriters()
    {
       strOutputFilename=outputfileprefix+"_mask-badpixelmethod.bil";
       Logger::Log("Will write bad pixel method data to: "+strOutputFilename);
-      hawk=dynamic_cast<Hawk*>(sensor);
-      bwmaskmethod=new BILWriter(strOutputFilename,bwmaskmethod->uchar8,GetNumCalibratedImageLines(),GetNumCalibratedImageSamples(),sensor->NumBands(),'w');
+      bwmaskmethod=new BILWriter(strOutputFilename,bwmaskmethod->uchar8,GetNumCalibratedImageLines(),GetNumCalibratedImageSamples(),sensor->TotalNumBands(),'w');
 
       //Add some information to the header file
       //Add x and y start values to the level1 bil file - both zero based
       bwmaskmethod->AddToHdr("x start = "+ToString(lowersample));
-      bwmaskmethod->AddToHdr("y start = "+ToString(startline));
+      if(USEAMMENDEDSTARTLINE==true)
+         bwmaskmethod->AddToHdr(ammendedstartlinecomment);
+      bwmaskmethod->AddToHdr("y start = "+ToString(ammendedstartline));
       bwmaskmethod->AddToHdr("dropped scans before y start = "+ToString(nummissingscanspriortostartline));
-      std::string waves=sensor->br->FromHeader("Wavelength");      
+      std::string waves=sensor->bin->GetFromFile("Wavelength");      
       if(tasks[flip_bands])
       {
          waves=ReverseWavelengthOrder(waves);
       }
       //Tidy up wavelength array to remove {, and ,} and replace with { and }
-      waves=sensor->br->TidyForHeader(waves);
+      waves=sensor->bin->TidyForHeader(waves,true);
       bwmaskmethod->AddToHdr("Wavelength = "+waves);
       bwmaskmethod->AddToHdr("Wavelength units = nm");
       bwmaskmethod->AddToHdr(";Bad CCD pixel detection methods. Values of: \n; "+
-                      ToString(Hawk::None)+" = Not flagged as a bad ccd pixel.\n; "+
-                      ToString(Hawk::A)+" = "+hawk->MethodDescriptor()[0]+"\n; "+
-                      ToString(Hawk::B)+" = "+hawk->MethodDescriptor()[1]+"\n; "+
-                      ToString(Hawk::C)+" = "+hawk->MethodDescriptor()[2]+"\n; "+
-                      ToString(Hawk::D)+" = "+hawk->MethodDescriptor()[3]+"\n; "+
-                      ToString(Hawk::E)+" = "+hawk->MethodDescriptor()[4]+"\n");
+                      ToString(BadPixels::None)+" = Not flagged as a bad ccd pixel.\n; "+
+                      ToString(BadPixels::A)+" = "+cal->badpixels[0].MethodDescriptor()[0]+"\n; "+
+                      ToString(BadPixels::B)+" = "+cal->badpixels[0].MethodDescriptor()[1]+"\n; "+
+                      ToString(BadPixels::C)+" = "+cal->badpixels[0].MethodDescriptor()[2]+"\n; "+
+                      ToString(BadPixels::D)+" = "+cal->badpixels[0].MethodDescriptor()[3]+"\n; "+
+                      ToString(BadPixels::E)+" = "+cal->badpixels[0].MethodDescriptor()[4]+"\n");
    }
 }
 
@@ -399,42 +436,53 @@ void MainWorker::WriteOutData(OutputDataFlag flag)
    //For each initialised element of the data object - write it out
    if(cal->pData()->Image()!=NULL)
    {
-      if(flag==Normal)
-         bwimage->WriteDataToLineSection(cal->pData()->Image(),sensor->NumSamples(),lowersample,uppersample);
-      else if((flag==MissingScan)||(flag==CorruptData))
-         bwimage->WriteLineWithValue(0);
-      else
-         throw "Unrecognised flag in WriteOutData - writing Image().";
-
+      for(unsigned int b=0;b<sensor->NumBands();b++)
+      {
+         if(flag==Normal)
+            bwimage->WriteDataToBandLineSection(&(cal->pData()->Image())[b*sensor->NumSamples()],sensor->NumSamples(),lowersample,uppersample);
+         else if((flag==MissingScan)||(flag==CorruptData))
+            bwimage->WriteBandLineWithValue(0);
+         else
+            throw "Unrecognised flag in WriteOutData - writing Image().";
+      }
    }
    if((cal->pData()->Mask()!=NULL)&&(tasks[output_mask]))
    {
-      if(flag==Normal)
-         bwmask->WriteDataToLineSection(cal->pData()->Mask(),sensor->NumSamples(),lowersample,uppersample);
-      else if(flag==MissingScan)
-         bwmask->WriteLineWithValue(sensor->DroppedScan);
-      else if(flag==CorruptData)
-         bwmask->WriteLineWithValue(sensor->CorruptData);
-      else
-         throw "Unrecognised flag in WriteOutData - writing Mask().";
+      for(unsigned int b=0;b<sensor->NumBands();b++)
+      {
+         if(flag==Normal)
+            bwmask->WriteDataToBandLineSection(&(cal->pData()->Mask())[b*sensor->NumSamples()],sensor->NumSamples(),lowersample,uppersample);
+         else if(flag==MissingScan)
+            bwmask->WriteBandLineWithValue(sensor->DroppedScan);
+         else if(flag==CorruptData)
+            bwmask->WriteBandLineWithValue(sensor->CorruptData);
+         else
+            throw "Unrecognised flag in WriteOutData - writing Mask().";
+      }
    }
    if((cal->pData()->BadPixMethod()!=NULL)&&(tasks[output_mask_method]))
    {
-      if(flag==Normal)
-         bwmaskmethod->WriteDataToLineSection(cal->pData()->BadPixMethod(),sensor->NumSamples(),lowersample,uppersample);
-      else if((flag==MissingScan)||(flag==CorruptData))
-         bwmaskmethod->WriteLineWithValue(0);
-      else
-         throw "Unrecognised flag in WriteOutData - writing BadPixelMethod().";
+      for(unsigned int b=0;b<sensor->NumBands();b++)
+         {
+         if(flag==Normal)
+            bwmaskmethod->WriteDataToBandLineSection(&(cal->pData()->BadPixMethod())[b*sensor->NumSamples()],sensor->NumSamples(),lowersample,uppersample);
+         else if((flag==MissingScan)||(flag==CorruptData))
+            bwmaskmethod->WriteBandLineWithValue(0);
+         else
+            throw "Unrecognised flag in WriteOutData - writing BadPixelMethod().";
+      }
    }
    if((cal->pData()->Fodis()!=NULL)&&(tasks[calibrate_fodis]))
    {
-      if(flag==Normal)
-         bwfodis->WriteDataToLineSection(cal->pData()->Fodis(),sensor->NumSamples(),0,0);
-      else if((flag==MissingScan)||(flag==CorruptData))
-         bwfodis->WriteLineWithValue(0);
-      else
-         throw "Unrecognised flag in WriteOutData - writing Fodis().";
+      for(unsigned int b=0;b<sensor->NumBands();b++)
+      {
+         if(flag==Normal)
+            bwfodis->WriteDataToBandLineSection(&(cal->pData()->Fodis())[b*sensor->NumSamples()],sensor->NumSamples(),0,0);
+         else if((flag==MissingScan)||(flag==CorruptData))
+            bwfodis->WriteBandLineWithValue(0);
+         else
+            throw "Unrecognised flag in WriteOutData - writing Fodis().";
+      }
    }
 }
 
@@ -481,88 +529,99 @@ void MainWorker::TransferHeaderInfo(BILWriter* const bw)
 {
    std::string strtransfer("");
 
-   strtransfer=sensor->br->FromHeader("sensor type"); //get the sensor type
+   strtransfer=sensor->bin->FromHeader("sensor type"); //get the sensor type
    if(!strtransfer.empty()) //if the string is not empty
    {
       strtransfer.insert(0,"sensor type = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("acquisition date"); //get the acquisition date
+   strtransfer=sensor->bin->FromHeader("acquisition date"); //get the acquisition date
    if(!strtransfer.empty()) //if the string is not empty
    {
       strtransfer.insert(0,"acquisition date = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("fps"); //get the frames per second type
+   strtransfer=sensor->bin->FromHeader("fps"); //get the frames per second type
    if(!strtransfer.empty()) //if the string is not empty
    {
       strtransfer.insert(0,"fps = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("binning"); //get the spatial/spectral binning
-   if(!strtransfer.empty()) //if the string is not empty
+   //Multiple subsensors will mean possibly different tint and binnings
+   unsigned int trackthissubsensor=cal->WhichSubSensor();
+   for(unsigned int subsensor=0;subsensor<cal->NumOfSubSensors();subsensor++)
    {
-      strtransfer.insert(0,"binning = ");
-      //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
-      bw->AddToHdr(strtransfer); //add the string to the header
-   }
+      cal->ChangeSubSensor(subsensor);
+      strtransfer=sensor->bin->GetFromFile("binningForHeader"); //get the spatial/spectral binning
+      if(!strtransfer.empty()) //if the string is not empty
+      {
+         strtransfer=sensor->bin->TidyForHeader(strtransfer);
+         bw->AddToHdr(strtransfer); //add the string to the header
+      }
 
-   strtransfer=sensor->br->FromHeader("tint"); //get the intergration time
-   if(!strtransfer.empty()) //if the string is not empty
-   {
-      strtransfer.insert(0,"tint = ");
-      //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
-      bw->AddToHdr(strtransfer); //add the string to the header
-   }
+      strtransfer=sensor->bin->GetFromFile("tintForHeader"); //get the intergration time
+      if(!strtransfer.empty()) //if the string is not empty
+      {
+         strtransfer=sensor->bin->TidyForHeader(strtransfer);
+         bw->AddToHdr(strtransfer); //add the string to the header
+      }
 
-   strtransfer=sensor->br->FromHeader("sensorid"); //get the sensor id
+      strtransfer=sensor->bin->GetFromFile("subsensorBandsForHeader"); //get the intergration time
+      if(!strtransfer.empty()) //if the string is not empty
+      {
+         strtransfer=sensor->bin->TidyForHeader(strtransfer);
+         bw->AddToHdr(strtransfer); //add the string to the header
+      }
+   }
+   //Ensure we're back to the subsensor we had before the change over above
+   cal->ChangeSubSensor(trackthissubsensor);
+
+   strtransfer=sensor->bin->FromHeader("sensorid"); //get the sensor id
    if(!strtransfer.empty()) //if the string is not empty
    {
       strtransfer.insert(0,"sensorid = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("GPS Start Time"); //get the GPS start time
+   strtransfer=sensor->bin->FromHeader("GPS Start Time"); //get the GPS start time
    if(!strtransfer.empty()) //if the string is not empty
    {
       strtransfer.insert(0,"GPS Start Time = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("GPS Stop Time"); //get the GPS stop time
+   strtransfer=sensor->bin->FromHeader("GPS Stop Time"); //get the GPS stop time
    if(!strtransfer.empty()) //if the string is not empty
    {
       strtransfer.insert(0,"GPS Stop Time = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("NavSync Timing"); //get the nav sync timing
+   strtransfer=sensor->bin->FromHeader("NavSync Timing"); //get the nav sync timing
    if(!strtransfer.empty()) //if the string is not empty
    {
       strtransfer.insert(0,"NavSync Timing = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("Wavelength"); //get the wavelength array
+   strtransfer=sensor->bin->FromHeader("Wavelength"); //get the wavelength array
    if(!strtransfer.empty()) //if the string is not empty
    {
       if(tasks[flip_bands])
@@ -571,11 +630,11 @@ void MainWorker::TransferHeaderInfo(BILWriter* const bw)
       }
       strtransfer.insert(0,"Wavelength = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
 
-   strtransfer=sensor->br->FromHeader("fwhm"); //get the fwhm array
+   strtransfer=sensor->bin->FromHeader("fwhm"); //get the fwhm array
    if(!strtransfer.empty()) //if the string is not empty
    {
       if(tasks[flip_bands])
@@ -584,7 +643,7 @@ void MainWorker::TransferHeaderInfo(BILWriter* const bw)
       }
       strtransfer.insert(0,"fwhm = ");
       //Need some way of removing the ; from the string and replacing with \n
-      strtransfer=sensor->br->TidyForHeader(strtransfer);
+      strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }   
 }

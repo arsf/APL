@@ -36,12 +36,15 @@ public:
    virtual void Readbytes(char* const chdata, unsigned long int bytes); //Read the specified number of bytes from current position
    virtual int Readband(char* const chdata, unsigned int band); //Reads the specified band
    virtual int Readbandline(char* const chdata, unsigned int band, unsigned int line); //reads the given line for the given band
-
    virtual double ReadCell(const unsigned int band,const unsigned int line, const unsigned int col);
-
    virtual void ReadlineToDoubles(double* const ddata,unsigned int line);
 
+   //Read in a rectangular area of data defined by lower left, upper right corners
+   virtual int ReadRect(char* const chdata, const int minrow, const int maxrow,const int mincol,const int maxcol); 
+
 protected:
+   //Read in part of a line defined by sampleno - starting sample; and nsamps - number of samples to read
+   virtual void ReadPartOfLine(char* const chdata,const unsigned int lineno,const unsigned int sampleno,const unsigned int nsamps);
 
 };
 

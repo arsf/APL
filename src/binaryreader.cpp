@@ -19,6 +19,11 @@
 
 BinaryReader::BinaryReader() //constructor
 {
+   //Assign error string and set items to NULL that are undefined
+   //may need to do a more full setting of items to 0 here.
+   missingheaderitemerror="Trying to read a key from hdr which does not exist: ";
+   this->filein=NULL;
+
 }
 
 BinaryReader::BinaryReader(std::string fname)//constructor with filename - only to return the filetype (BIL or BSQ)
@@ -29,8 +34,6 @@ BinaryReader::BinaryReader(std::string fname)//constructor with filename - only 
    this->filename=fname;
    //Want to open bsq file, read in hdr file, and assign all the class variables
    this->filein = fopen(this->filename.c_str(),"rb");
-
-
    if(!this->IsOpen())
    {
       //File has failed to open
@@ -312,7 +315,9 @@ std::string BinaryReader::FromHeader(std::string key,int itemnum,std::string THR
    if(it==this->Header.end()) //if the key doesnt exist return an empty string
    {
       if(THROW.compare("true")==0)
+      {
          throw missingheaderitemerror+key;
+      }
       return "";
    }
    else //else continue and get the related value to the key
@@ -351,7 +356,7 @@ std::string BinaryReader::FromHeader(std::string key,int itemnum,std::string THR
       }
       else if(str.find(',')!=std::string::npos)
       {
-         //This occurs when multiple objects where on the same line
+         //This occurs when multiple objects were on the same line
          //eg {1, 56, 76} - only returns numbers
       
          //Commented out below 2 lines 10/09/2010 and replaced with new fnction to use comma delims and return anything 
@@ -379,11 +384,11 @@ void BinaryReader::CannotFind(std::string key)
 //Function to manually close the file and tidy up anything else
 void BinaryReader::Close()
 {
-   //Close the bil file if open
+   //Close the binary file if open
    if(this->IsOpen())
    {
       //DEBUG statement
-      DEBUGPRINT("Closing BILReader...");
+      DEBUGPRINT("Closing BinaryReader...");
       clearerr(filein);
       if(fclose(filein)==0)
          filein=NULL;   
@@ -489,7 +494,7 @@ std::string BinaryReader::HeaderDump(bool ret)
 // Function to tidy up strings when added to the header file
 // - makes {, -> { and ,} -> } 
 //-------------------------------------------------------------------------
-std::string BinaryReader::TidyForHeader(std::string totidy)
+std::string BinaryReader::TidyForHeader(std::string totidy,bool wrapinbraces)
 {
    std::string ret=totidy;
    //replace any ; with , unless string starts with ; - may be a comment
@@ -499,6 +504,13 @@ std::string BinaryReader::TidyForHeader(std::string totidy)
    ret=ReplaceAllWith(&ret,"{\n,","{\n");
    ret=ReplaceAllWith(&ret,",}","}");  
    ret=ReplaceAllWith(&ret,",\n}","\n}"); 
+   if(wrapinbraces)
+   {
+      if(ret.find("{")!=0)
+         ret.insert(0,"{");
+      if(ret.rfind("}")!=ret.length()-1)
+         ret.push_back('}');
+   }
    return ret;
 }
 

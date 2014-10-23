@@ -11,14 +11,10 @@
 #ifndef CALIBRATION_H
 #define CALIBRATION_H
 
-#include <typeinfo>
-
 #include "logger.h"
 #include "binfile.h"
 #include "bilwriter.h"
 #include "specimsensors.h"
-
- 
 
 //-------------------------------------------------------------------------
 // Class to hold the various data used in the calibration
@@ -112,7 +108,6 @@ public:
       }
    }
  
-
 private:
    double* fodis;
    unsigned char* mask;
@@ -124,6 +119,39 @@ private:
    unsigned long arraysize;
 
 };
+
+//-------------------------------------------------------------------------
+// Class to contain bad pixel lists (the ones read from files)
+//-------------------------------------------------------------------------
+class BadPixels
+{
+public:
+   BadPixels();
+   ~BadPixels();
+   void SetUpBadPixels(std::string badpixelfilename,std::map<int,int> &revbandmap);
+   void DecodeBadPixel(std::map<int,int> revbandmap); //function to fill in the bad pixel array from specim files
+
+   unsigned int NumBadPixels()const{return nbadpixels;}
+   const unsigned int* GetBadPixels(){return badpixels;}
+   const unsigned char* BadPixelMethod(){return badpixelmethod;}
+   unsigned int BandNotInUse()const{return bandnotinuse;}
+   const std::string* MethodDescriptor(){return bpmethod_descriptor;}
+   std::stringstream badpixelstream;//stringstream to hold bad pixels
+
+   bool arsfbadpixelfiletype;//true if ARSF file false if specim file
+   enum BadPixelMethodName {None=0, A=1, B=2, C=4, D=8,E=16};
+
+private:
+   unsigned int bandnotinuse;//flag value used for hawk bad pixels - to show when a band is not in use(e.g spectral binning of 2, band numbers 127->256 dont exist)
+   unsigned int* badpixels;  //array to hold the bad pixels in (sample,band)
+   unsigned char* badpixelmethod; //array to hold method used to detect bad pixel for ARSF calibrated bad pixel file
+   std::string* bpmethod_descriptor;//array of method descriptors
+   unsigned int nbadpixels; //number of bad pixels
+
+   void DecodeARSFBadPixels(std::map<int,int> revbandmap);
+   void DecodeSpecimBadPixels(std::map<int,int> revbandmap); 
+};
+
 
 //-------------------------------------------------------------------------
 // Class to perform calibration algorithms
@@ -156,18 +184,32 @@ public:
    bool ReadBadPixelFile();
    void ReadQCFailureFile(std::string qcfailurefile);
 
+   void ChangeSubSensor(unsigned int sensorindex);
+   unsigned int NumOfSubSensors()const{return numofsensordata;}
+   unsigned int SubSensorLowerBand() const {return subsensorlowerband;}
+   unsigned int WhichSubSensor() const {return thissubsensor;}
+   BadPixels* badpixels;
+
 private:
    std::string calibrationFilenamePrefix;
    Data* data;
+   Data** sensordata;
    Specim* sensor;
-   
+
+   unsigned int GetBinningRatio(std::string bintype);
    void CheckCalWavelengths(float* const wl_cal, const unsigned int numwl_cal);
    void ReadBinAndTrimGains(double* const trimmedcal);
    void AssignMaskValue(const unsigned int ele,const Specim::MaskType type);
 
    //Maps to hold the mapping from raw band -> cal file bands and vice versa
-   std::map<int,int>bandmap; //raw to cal
-   std::map<int,int>revbandmap; //reverse of bandmap (cal to raw)
+   std::map<int,int>* bandmap; //raw to cal
+   std::map<int,int>* revbandmap; //reverse of bandmap (cal to raw)
+
+   std::map<int,int>* sensorbandmap; 
+   std::map<int,int>* sensorrevbandmap; 
+
+   unsigned int numofsensordata,subsensorlowerband;
+   unsigned int thissubsensor;
 };
 
 

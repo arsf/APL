@@ -76,55 +76,6 @@ private:
 };
 
 
-
-//-------------------------------------------------------------------------
-/*
-   Digital elevation model Reader class
-   Derives from BILReader class with extra functions to aid reading in the DEM
-*/
-//-------------------------------------------------------------------------
-
-
-class DEMBILReader: public BILReader{
-public:
-   //New constructor
-   DEMBILReader(std::string strFilename):BILReader(strFilename)
-   {
-   }
-
-   //Read in a rectangular area of data defined by lower left, upper right corners (in lat/lon).
-   int ReadRect(char* const chdata, const int minrow, const int maxrow,const int mincol,const int maxcol); 
-
-private:
-   //Read in part of a line defined by sampleno - starting sample; and nsamps - number of samples to read
-   void ReadPartOfLine(char* const chdata,const unsigned int lineno,const unsigned int sampleno,const unsigned int nsamps);
-
-};
-
-//-------------------------------------------------------------------------
-/*
-   Digital elevation model Reader class
-   Derives from BSQReader class with extra functions to aid reading in the DEM
-*/
-//-------------------------------------------------------------------------
-
-
-class DEMBSQReader: public BSQReader{
-public:
-   //New constructor
-   DEMBSQReader(std::string strFilename):BSQReader(strFilename)
-   {
-   }
-
-   //Read in a rectangular area of data defined by lower left, upper right corners (in lat/lon).
-   int ReadRect(char* const chdata, const int minrow, const int maxrow,const int mincol,const int maxcol); 
-
-private:
-   //Read in part of a line defined by sampleno - starting sample; and nsamps - number of samples to read
-   void ReadPartOfLine(char* const chdata,const unsigned int lineno,const unsigned int sampleno,const unsigned int nsamps);
-
-};
-
 //-------------------------------------------------------------------------
 // DEM Binary File class that derives from BinFile to allow BSQ or BIL DEMs
 //-------------------------------------------------------------------------
@@ -132,21 +83,8 @@ private:
 class DEMBinFile: public BinFile{
 public:
    //New constructor to check that only one band exists in the file
-   DEMBinFile(std::string strFilename)
+   DEMBinFile(std::string strFilename) : BinFile(strFilename)
    {
-      br=NULL;
-      br=new BinaryReader(strFilename);
-      BinaryReader::interleavetype ft=br->GetFileStyle();
-      delete br;
-      br=NULL;
-
-      if(ft==BinaryReader::BSQ)
-         br=new DEMBSQReader(strFilename);
-      else if(ft==BinaryReader::BIL)
-         br=new DEMBILReader(strFilename);      
-      else
-         throw "Error. Iterleave type in file: "+strFilename+" is not bsq or bil.";
-
       //Check there is only 1 band in the BIL file
       if(this->FromHeader("bands") != "1")
          throw "Expected DEM to be a 1-band BIL file. Number of bands reported in hdr is not 1";
@@ -155,8 +93,7 @@ public:
       if(FromHeader("data ignore value")!="")
          dataignore=StringToDouble(FromHeader("data ignore value"));
       else
-         dataignore=-99999999; //need to give it a number - this is unlikely to ever be used as real DEM values
-         
+         dataignore=-99999999; //need to give it a number - this is unlikely to ever be used as real DEM values 
    } 
 
    int ReadRect(char* const chdata, const double minrow, const double maxrow,const double mincol,const double maxcol)

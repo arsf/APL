@@ -14,7 +14,6 @@
 #include "specimsensors.h"
 #include "calibration.h"
 
-
 class MainWorker
 {
 public:
@@ -51,6 +50,7 @@ private:
 
    Eagle* eagle;
    Hawk* hawk;
+   Fenix* fenix;
 
    std::string outputfileprefix;
    void InitialiseWriters();

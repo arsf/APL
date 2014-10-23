@@ -571,7 +571,7 @@ int main(int argc,char* argv[])
    BILWriter* bw=NULL;
    try
    {
-      bw=new BILWriter(strOutputIGMFilename,BILWriter::float64,nlines,nsamps,3,'w');
+      bw=new BILWriter(strOutputIGMFilename,FileWriter::float64,nlines,nsamps,3,'w');
    }
    catch(BILWriter::BILexception e)
    {
