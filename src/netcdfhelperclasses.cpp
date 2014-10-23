@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------- 
-//Copyright (c) 2013 Natural Environment Research Council (NERC) UK 
+//Copyright (c) 2014 Natural Environment Research Council (NERC) UK 
 // 
 //This file is part of APL (Airborne Processing Library)
 //Licensed under the APL Open Software License version 1.0 
