@@ -1,5 +1,5 @@
 # VERSION NUMBER
-vers=3.2.0.1
+vers=3.4.10
 # Build type 32 or 64 (for linux versions)
 TOBUILD=64
 # contact email address to go into exe error messages
@@ -65,11 +65,11 @@ $(libs)/liblogger.a: $(obj)/logger.o $(obj)/commonfunctions.o
 	$(AR) $@ $^
 
 # make binary reader library
-$(libs)/libbinaryreader.a: $(obj)/binaryreader.o $(obj)/bil.o $(obj)/bsq.o $(obj)/binfile.o $(obj)/commonfunctions.o
+$(libs)/libbinaryreader.a: $(obj)/binaryreader.o $(obj)/bil.o $(obj)/bsq.o $(obj)/binfile.o $(obj)/multifile.o $(obj)/commonfunctions.o
 	rm -f $@
 	$(AR) $@ $^
 
-$(bin)/aplcal: $(obj)/radcal.o $(obj)/sensor.o $(obj)/specimsensors.o $(obj)/calibration.o $(obj)/mainworker.o $(obj)/commonfunctions.o $(obj)/bilwriter.o $(obj)/os_dependant.o $(common_libs)
+$(bin)/aplcal: $(obj)/radcal.o $(obj)/specimsensors.o $(obj)/calibration.o $(obj)/mainworker.o $(obj)/commonfunctions.o $(obj)/bilwriter.o $(obj)/os_dependant.o $(common_libs)
 	$(CC)  $(CPPFLAGS) -o $@ $^
 
 $(bin)/aplnav: $(obj)/navigation.o $(obj)/navfileclasses.o $(obj)/datahandler.o $(obj)/navigationsyncer.o $(obj)/navigationinterpolator.o $(obj)/interpolationfunctions.o $(obj)/leverbore.o $(obj)/transformations.o $(obj)/conversions.o $(obj)/commonfunctions.o $(obj)/bilwriter.o  $(obj)/os_dependant.o $(common_libs)
@@ -81,7 +81,7 @@ $(bin)/aplcorr: $(obj)/geolocation.o $(obj)/geodesics.o $(obj)/cartesianvector.o
 $(bin)/apltran: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/transform.o $(obj)/basic_igm_worker.o $(common_libs)
 	$(CC) $(CPPFLAGS) $(LDFLAGS) $(transform_ldflags) -o $@ $^
 
-$(bin)/aplmap: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/level3grid.o $(obj)/basic_igm_worker.o $(obj)/map_main.o $(obj)/TreeGrid.o $(obj)/treegrid_support.o $(obj)/os_dependant.o $(obj)/geodesics.o $(obj)/conversions.o $(common_libs) 
+$(bin)/aplmap: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/level3grid.o $(obj)/basic_igm_worker.o $(obj)/map_main.o $(obj)/TreeGrid.o $(obj)/treegrid_support.o $(obj)/os_dependant.o $(obj)/geodesics.o $(obj)/conversions.o $(common_libs)  
 	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^
 
 $(bin)/aplmask: $(obj)/bilwriter.o $(obj)/applymask.o $(common_libs)

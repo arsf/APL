@@ -1,5 +1,5 @@
 # VERSION NUMBER
-vers=3.2.0.1
+vers=3.4.10
 # Build type 32 or 64 (for windows versions)
 TOBUILD=32
 # contact email address to go into exe error messages
@@ -10,7 +10,7 @@ CPPFLAGS  =-Wall -O4 -D VERSION='"$(vers)"'  -D CONTACTEMAIL='"$(email)"'
 CPPFLAGS += -D _W32 
 # /usr/local/include/ is where the windows 64-bit install of proj is located
 # point to the location of the windows build of blitz++  - this will need to be updated to point to your copy of the library
-CPPFLAGS += -I windows_build_of_blitz/ -I /usr/local/include/
+CPPFLAGS += -Iexternal_code/blitz-0.9/ -I/usr/local/include/
 #Large file support in 32-bit versions
 CPPFLAGS += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE 
 # To ensure only 64 bits of storage (rather than 80?)
@@ -54,7 +54,7 @@ dependfile = .depend
 common_libs = $(libs)/libcommandline.a $(libs)/liblogger.a $(libs)/libbinaryreader.a
 
 # Make all the exes
-all: $(dependfile) aplcorr apltran aplmap aplmask
+all: $(dependfile) aplcal aplnav aplshift aplcorr apltran aplmap aplmask
 
 # make individual exes
 # these ones have only been tested under linux - may not compile in windows
@@ -78,15 +78,15 @@ $(libs)/liblogger.a: $(obj)/logger.o $(obj)/commonfunctions.o
 	$(AR)  $@ $^
 
 # make binary reader library
-$(libs)/libbinaryreader.a: $(obj)/binaryreader.o $(obj)/bil.o $(obj)/bsq.o $(obj)/binfile.o $(obj)/commonfunctions.o
+$(libs)/libbinaryreader.a:  $(obj)/binaryreader.o $(obj)/bil.o $(obj)/bsq.o $(obj)/binfile.o $(obj)/multifile.o $(obj)/commonfunctions.o
 	rm -f $@
 	$(AR)  $@ $^ 
 
 #Note that on some systems you may need to replace "-lstdc++" with "-static-libstdc++ -static-libgcc"
-$(bin)/aplcal.exe: $(obj)/radcal.o $(obj)/sensor.o $(obj)/specimsensors.o $(obj)/calibration.o $(obj)/mainworker.o $(obj)/commonfunctions.o $(obj)/bilwriter.o $(obj)/os_dependant.o $(common_libs)
+$(bin)/aplcal.exe: $(obj)/radcal.o $(obj)/specimsensors.o $(obj)/calibration.o $(obj)/mainworker.o $(obj)/commonfunctions.o $(obj)/bilwriter.o $(obj)/os_dependant.o $(common_libs)
 	$(CC)  $(CPPFLAGS) -o $@ $^ -lstdc++ 
 
-$(bin)/aplnav.exe: $(obj)/navigation.o $(obj)/navfileclasses.o $(obj)/datahandler.o $(obj)/navigationsyncer.o $(obj)/navigationinterpolator.o $(obj)/interpolationfunctions.o $(obj)/leverbore.o $(obj)/transformations.o $(obj)/conversions.o $(obj)/commonfunctions.o $(obj)/bilwriter.o $(obj)/os_dependant.o $(common_libs)
+$(bin)/aplnav.exe: $(obj)/navigation.o $(obj)/navfileclasses.o $(obj)/datahandler.o $(obj)/navigationsyncer.o $(obj)/navigationinterpolator.o $(obj)/interpolationfunctions.o $(obj)/leverbore.o $(obj)/transformations.o $(obj)/conversions.o $(obj)/commonfunctions.o $(obj)/bilwriter.o  $(obj)/os_dependant.o $(common_libs)
 	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
 
 $(bin)/aplshift.exe: $(obj)/bilwriter.o $(obj)/navshift.o $(obj)/datahandler.o $(obj)/interpolationfunctions.o $(obj)/navbaseclass.o $(common_libs)
@@ -98,7 +98,7 @@ $(bin)/aplcorr.exe: $(obj)/geolocation.o $(obj)/geodesics.o $(obj)/cartesianvect
 $(bin)/apltran.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/transform.o $(obj)/basic_igm_worker.o $(common_libs)
 	$(CC) $(CPPFLAGS) $(LDFLAGS) $(transform_ldflags) -o $@ $^ -lstdc++
 
-$(bin)/aplmap.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o  $(obj)/level3grid.o $(obj)/basic_igm_worker.o $(obj)/map_main.o  $(obj)/TreeGrid.o $(obj)/treegrid_support.o $(obj)/os_dependant.o $(obj)/geodesics.o $(obj)/conversions.o $(common_libs)
+$(bin)/aplmap.exe: $(obj)/bilwriter.o $(obj)/commonfunctions.o $(obj)/level3grid.o $(obj)/basic_igm_worker.o $(obj)/map_main.o $(obj)/TreeGrid.o $(obj)/treegrid_support.o $(obj)/os_dependant.o $(obj)/geodesics.o $(obj)/conversions.o $(common_libs)  
 	$(CC) $(CPPFLAGS) $(LDFLAGS) -o $@ $^ -lstdc++
 
 $(bin)/aplmask.exe: $(obj)/bilwriter.o $(obj)/applymask.o $(common_libs)
