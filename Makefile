@@ -1,5 +1,5 @@
 # VERSION NUMBER
-vers=3.4.10
+vers=3.5.6
 # Build type 32 or 64 (for linux versions)
 TOBUILD=64
 # contact email address to go into exe error messages
