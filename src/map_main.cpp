@@ -27,7 +27,7 @@ const std::string DESCRIPTION="Mapping / Gridding Software";
 //----------------------------------------------------------------
 //Number of options that can be on command line
 //----------------------------------------------------------------
-const int number_of_possible_options = 16;
+const int number_of_possible_options = 17;
 
 //----------------------------------------------------------------
 //Option names that can be on command line
@@ -48,6 +48,7 @@ const std::string availableopts[number_of_possible_options]={
 "-ignorevalue",
 "-nodata",
 "-rowcolmap",
+"-ignorediskspace",
 "-help"
 }; 
 
@@ -70,6 +71,7 @@ const std::string optsdescription[number_of_possible_options]={
 "A value to ignore in the level1 data and interpolate over. The default value is 0. Use 'NONE' to not ignore any value.",
 "A value to set as the nodata value inserted into the mapped image. Default is 0.",
 "Specify this, followed by an output filename, to output an additional BIL file that contains 2 bands: row and col values of the level-1 image in the mapped grid. This will only run with interpolation method 'nearest'",
+"Process even if insufficient disk space is reported. Only use if the disk space reported is incorrect.",
 "Display this help."
 };
 
@@ -153,6 +155,11 @@ std::string GetHelpFor(const std::string str)
                         "as if ignorevalue is set to NONE regardless of it's true value. Currently this method only runs with interpolation method 'nearest'."
                         "\nThis option must be followed by the name of the BIL file you wish to create to store the data in.";
 
+   helpdoc["ignorediskspace"]="\nThis flag will continue processing even if there is insufficient space reported. "
+                              "Required for some shared file systems where the amount of free space is not correctly reported. "
+                              "Use with caution as if there isn't sufficient space for the output file, data will be written until the disk is filled.";
+
+
    //If the special keyword FULL is given then concatenate all the help strings and return
    if(str.compare("FULL")==0)
    {
@@ -217,6 +224,10 @@ int main(int argc, char* argv[])
    //this will be true when using the IGM to define the treegrid (i.e. when using all data)
    //and false when using the -area flag to specify an output region
    bool TOROUND=false;
+
+   //by default will exit if there is insufficient space for output files
+   //can ignore this for systems where disk space reporting is incorrect.
+   bool IGNORE_DISKSPACE=false;
 
    //Filename for rowcol mapping file if requested
    std::string strRowColMapFilename="";
@@ -738,6 +749,26 @@ int main(int argc, char* argv[])
       {
          //Nothing - we won't write row/col data to a file
       }
+      //-------------------------------------------------------------------
+      // Ignore if insufficient disk space is reported
+      //-------------------------------------------------------------------
+      if(cl->OnCommandLine("-ignorediskspace"))
+      {
+         if(cl->GetArg("-ignorediskspace").compare(optiononly)!=0)
+         {
+            throw CommandLine::CommandLineException("Option -ignorediskspace does not take any arguments.\n");
+         }
+         else
+         {
+            IGNORE_DISKSPACE=true;
+         }
+      }
+      else
+      {
+         IGNORE_DISKSPACE=false;
+      }
+
+ 
    }
    catch(CommandLine::CommandLineException e)
    {
@@ -1047,8 +1078,15 @@ int main(int argc, char* argv[])
    if(avds < (uint64_t)map->grid->NumRows()*map->grid->NumCols()*map->grid->NumBands()*map->GetOutputDataSize())
    {
       //There is not enough disk space
-      Logger::Error("There is not enough available disk space for this data file.");
-      exit(1);
+      if(IGNORE_DISKSPACE)
+      {
+         Logger::Warning("Insufficient disk space was found for processing. Ignoring and carrying on as '--ignorediskspace' option used.");
+      }
+      else
+      {
+         Logger::Error("There is not enough available disk space for this data file.");
+         exit(1);
+      }
    }
 
    //----------------------------------------------------------------------

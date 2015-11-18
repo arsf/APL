@@ -165,7 +165,7 @@ void NavigationInterpolator::Interpolate(void (*f)(const double*,const int,DataH
       //Added a test to see if all interpolated times are within nav data 
       if((times[i] > dhandle->GetLine(dhandle->GetNumEntries()-1)->time) || (times[i] < dhandle->GetLine(0)->time))
       {
-         throw "Interpolated time is outside the range of the navigation data:"+ToString(times[i]);
+         throw "Interpolated time is outside the range of the navigation data for scan line: "+ToString(i)+" and time:"+ToString(times[i]);
       }      
    }
 

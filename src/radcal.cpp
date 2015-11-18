@@ -519,7 +519,7 @@ int main(int argc,char* argv[])
             //If fenix sensor then we need to only search from frame 1 as we ignore frame 0 (since there are many missing frames between 0 and 1)
             if(CheckSensorID(FENIX,job->sensor->SensorID()))
             {
-               job->SetDroppedScansPriorToStartLine(job->sensor->GetMissingFramesBetweenLimits(1,startline));               
+               job->SetDroppedScansPriorToStartLine(job->sensor->GetMissingFramesBetweenLimits(1,startline));
             }
             else
             {
@@ -575,8 +575,10 @@ int main(int argc,char* argv[])
          //For every line after the first one check if the frame counter is
          //increasing by 1 or more and insert missing scans if appropriate
          //only do this if missing scans are requested to be inserted
+         //If the sensor is Fenix then we ignore the dropped scans at line 1 if
+         //the startline is set to 0. If not then we process from line 0 and insert scans.
          //----------------------------------------------------------------------
-         if(CheckSensorID(FENIX,job->sensor->SensorID()) && (line==1))
+         if(CheckSensorID(FENIX,job->sensor->SensorID()) && (line==1) && (startline!=0))
          {
             //Skip adding missing frames after first line of FENIX
             Logger::Log("Will not add missing frames for Fenix sensor between first two scans as these are purposefully dropped - we instead process from frame 2.");
@@ -638,7 +640,7 @@ int main(int argc,char* argv[])
                break;
             }
          }
-         
+
          //----------------------------------------------------------------------
          //Calibrate this line of data and write it out
          //----------------------------------------------------------------------

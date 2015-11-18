@@ -57,7 +57,7 @@ public:
       if(i<numsyncs)
          return syncdelay[i];
       else
-         throw "Requested sync time index is out of bounds in GetSyncDelay().";
+         throw "Requested sync time index is out of bounds in GetSyncDelay(). Requested "+ToString(i)+" of "+ToString(numsyncs);
    };
 
    double GetGPSSync(const unsigned long i)
@@ -396,9 +396,11 @@ public:
       day=StringToUINT(GetItemFromString(message,2,delim));
       month=StringToUINT(GetItemFromString(message,3,delim));
       year=StringToUINT(GetItemFromString(message,4,delim));     
-
-      std::string date=GetItemFromString(message,2,delim)+"-"+GetItemFromString(message,3,delim)+"-"+GetItemFromString(message,4,delim);
-      dayofweek=GetDayOfWeek(date);
+      //We want to match a particular format string, we shall use dd-mm-yyyy
+      std::string date=pad(GetItemFromString(message,2,delim),'0',2)+"-"
+                       +pad(GetItemFromString(message,3,delim),'0',2)+"-"
+                       +pad(GetItemFromString(message,4,delim),'0',2);
+      dayofweek=GetDayOfWeek(date,"dd-mm-yyyy");
       secofweek_to_startofday=dayofweek*3600*24;
    }
    unsigned int day,month,year;

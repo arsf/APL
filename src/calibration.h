@@ -136,10 +136,11 @@ public:
    const unsigned char* BadPixelMethod(){return badpixelmethod;}
    unsigned int BandNotInUse()const{return bandnotinuse;}
    const std::string* MethodDescriptor(){return bpmethod_descriptor;}
+   unsigned int MethodDescriptorSize()const {return num_method_descriptors;}
    std::stringstream badpixelstream;//stringstream to hold bad pixels
 
    bool arsfbadpixelfiletype;//true if ARSF file false if specim file
-   enum BadPixelMethodName {None=0, A=1, B=2, C=4, D=8,E=16};
+   enum BadPixelMethodName {None=0, A=1, B=2, C=4, D=8,E=16,F=32};
 
 private:
    unsigned int bandnotinuse;//flag value used for hawk bad pixels - to show when a band is not in use(e.g spectral binning of 2, band numbers 127->256 dont exist)
@@ -147,6 +148,7 @@ private:
    unsigned char* badpixelmethod; //array to hold method used to detect bad pixel for ARSF calibrated bad pixel file
    std::string* bpmethod_descriptor;//array of method descriptors
    unsigned int nbadpixels; //number of bad pixels
+   unsigned int num_method_descriptors;//number of method descriptors
 
    void DecodeARSFBadPixels(std::map<int,int> revbandmap);
    void DecodeSpecimBadPixels(std::map<int,int> revbandmap); 

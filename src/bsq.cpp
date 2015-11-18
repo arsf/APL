@@ -58,7 +58,7 @@ BSQReader::BSQReader(std::string fname)
       {
          this->CannotFind("interleave");
       }
-      if( it->second != "bsq")
+      if( ToLowerCase(it->second) != "bsq")
       {
          brinfo<<"Header file states file "<<this->filename<<" is not a bsq file but a "<<it->second<<std::endl;
          throw BRexception(brinfo.str()); //Throw an exception
@@ -142,20 +142,14 @@ void BSQReader::Readlines(char* const chdata, unsigned int startline, unsigned i
    //Move the file pointer to this position
    //this->filein.seekg(pos,std::ios::beg);
 
-   if(this->CheckCapacity(nbytestoread))
+   //Cannot do the check on capacity (using the binary reader function) for this function as 
+   //it is not reading a continuous block of data
+   for(unsigned int band=0;band<numbands;band++)
    {
-      for(unsigned int band=0;band<numbands;band++)
+      for(unsigned int line=startline;line<startline+numlines;line++)
       {
-         for(unsigned int line=startline;line<startline+numlines;line++)
-         {
-            Readbandline(&chdata[bytesperline*(line-startline)+band*numlines*bytesperline], band, line);
-         }
+         Readbandline(&chdata[bytesperline*(line-startline)+band*numlines*bytesperline], band, line);
       }
-   }
-   else
-   {
-      brinfo<<"Attempted to read "<<nbytestoread<<" but file reports there are less bytes remaining to be read"<<std::endl;
-      throw BRexception(brinfo.str());
    }
 }
 

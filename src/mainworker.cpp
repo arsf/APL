@@ -330,16 +330,15 @@ void MainWorker::InitialiseWriters()
    bwimage->AddToHdr("y start = "+ToString(ammendedstartline));
    bwimage->AddToHdr("dropped scans before y start = "+ToString(nummissingscanspriortostartline));
    //Add command line
-   bwimage->AddToHdr(";The command line used to process the data: "+commandlinetext);   
+   bwimage->AddToHdr(";The command line used to process the data: "+commandlinetext);
    //Add raw file name
-   bwimage->AddToHdr(";Raw data file: "+sensor->RawFilename());   
+   bwimage->AddToHdr(";Raw data file: "+sensor->RawFilename());
    //Also add the name of the calibration file that is to be used
-   bwimage->AddToHdr(";The data has been calibrated using the file: "+cal->CalibrationFile());   
+   bwimage->AddToHdr(";The data has been calibrated using the file: "+cal->CalibrationFile());
    //Add the wavelength units - this will need to be hard coded and assumed to be nm
-   bwimage->AddToHdr("Wavelength units = nm");   
-   //Add the calibrated data units 
+   bwimage->AddToHdr("Wavelength units = nm");
+   //Add the calibrated data units
    bwimage->AddToHdr("Radiance data units = "+sensor->CalibratedUnits());
-
    //----------------------------------------------------------------------
    //Create a bil writer for the fodis data if it has been requested
    //----------------------------------------------------------------------
@@ -370,7 +369,7 @@ void MainWorker::InitialiseWriters()
          bwmask->AddToHdr(ammendedstartlinecomment);
       bwmask->AddToHdr("y start = "+ToString(ammendedstartline));
       bwmask->AddToHdr("dropped scans before y start = "+ToString(nummissingscanspriortostartline));
-      std::string waves=sensor->bin->GetFromFile("Wavelength");      
+      std::string waves=sensor->bin->FromHeader("Wavelength");
       if(tasks[flip_bands])
       {
          waves=ReverseWavelengthOrder(waves);
@@ -406,7 +405,7 @@ void MainWorker::InitialiseWriters()
          bwmaskmethod->AddToHdr(ammendedstartlinecomment);
       bwmaskmethod->AddToHdr("y start = "+ToString(ammendedstartline));
       bwmaskmethod->AddToHdr("dropped scans before y start = "+ToString(nummissingscanspriortostartline));
-      std::string waves=sensor->bin->GetFromFile("Wavelength");      
+      std::string waves=sensor->bin->FromHeader("Wavelength");
       if(tasks[flip_bands])
       {
          waves=ReverseWavelengthOrder(waves);
@@ -415,13 +414,19 @@ void MainWorker::InitialiseWriters()
       waves=sensor->bin->TidyForHeader(waves,true);
       bwmaskmethod->AddToHdr("Wavelength = "+waves);
       bwmaskmethod->AddToHdr("Wavelength units = nm");
-      bwmaskmethod->AddToHdr(";Bad CCD pixel detection methods. Values of: \n; "+
+      std::string MethodString=";Bad CCD pixel detection methods. Values of: \n; "+
                       ToString(BadPixels::None)+" = Not flagged as a bad ccd pixel.\n; "+
                       ToString(BadPixels::A)+" = "+cal->badpixels[0].MethodDescriptor()[0]+"\n; "+
                       ToString(BadPixels::B)+" = "+cal->badpixels[0].MethodDescriptor()[1]+"\n; "+
                       ToString(BadPixels::C)+" = "+cal->badpixels[0].MethodDescriptor()[2]+"\n; "+
                       ToString(BadPixels::D)+" = "+cal->badpixels[0].MethodDescriptor()[3]+"\n; "+
-                      ToString(BadPixels::E)+" = "+cal->badpixels[0].MethodDescriptor()[4]+"\n");
+                      ToString(BadPixels::E)+" = "+cal->badpixels[0].MethodDescriptor()[4]+"\n"; 
+      //If there is a sixth descriptor (2015 onwards) add it here
+      if(cal->badpixels[0].MethodDescriptorSize()>5)
+      {
+         MethodString+="; "+ToString(BadPixels::F)+" = "+cal->badpixels[0].MethodDescriptor()[5]+"\n";
+      }
+      bwmaskmethod->AddToHdr(MethodString);
    }
 }
 
@@ -633,7 +638,6 @@ void MainWorker::TransferHeaderInfo(BILWriter* const bw)
       strtransfer=sensor->bin->TidyForHeader(strtransfer);
       bw->AddToHdr(strtransfer); //add the string to the header
    }
-
    strtransfer=sensor->bin->FromHeader("fwhm"); //get the fwhm array
    if(!strtransfer.empty()) //if the string is not empty
    {

@@ -98,7 +98,7 @@ class NearestNeighbour : public Interpolator<T>
 {
 public:
    NearestNeighbour(int numbands) : Interpolator<T>(numbands) {this->interpolator_type=Interpolators::NEARESTNEIGHBOUR;}
-   virtual void Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data);
+   virtual void Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data=NULL);
 protected:
    virtual std::vector<Item>* UpdatePoints(unsigned int band,DataAccessor<T>* lev1data);
 };
@@ -111,7 +111,7 @@ class IDW : public Interpolator<T>
 {
 public:
    IDW(int numbands) : Interpolator<T>(numbands) {this->interpolator_type=Interpolators::IDW;}
-   virtual void Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data);
+   virtual void Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data=NULL);
 
    //Function to calculate the sum of weights AND trim out unused points from the vector dp
    double CalculateSumWeights(std::vector<Item>* dp)
@@ -144,7 +144,7 @@ public:
    virtual void Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data);
 
 protected:
-   void FallBack(const unsigned int line,const unsigned int column,const unsigned int* const bands,DataAccessor<T>* lev1data);
+   void FallBack(const unsigned int line,const unsigned int column,const unsigned int* const bands,DataAccessor<T>* lev1data=NULL);
    bool GetNeighbouringPoints(const IGMPoint* l3p,const Item* l1p, long* const igmrows, long* const igmcols);
    double GetInterpolatedValue(const double* const l3pos, const double* const datavalues);
    void GetUV(const double* const xpos,const double* const ypos, double* const interppos);
@@ -174,7 +174,7 @@ class Cubic : public Interpolator<T>
 {
 public:
    Cubic(int numbands) : Interpolator<T>(numbands) {this->interpolator_type=Interpolators::CUBIC;}
-   virtual void Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data);
+   virtual void Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data=NULL);
 
 protected:
    virtual std::vector<Item>* UpdatePoints(unsigned int band,DataAccessor<T>* lev1data);
@@ -192,7 +192,7 @@ protected:
 // Function to apply nearest neighbour interpolation
 //----------------------------------------------------------------------
 template <class T>
-void NearestNeighbour<T>::Interpolate(std::vector<Item>* dp, const unsigned int* const bands,DataAccessor<T>* lev1data=NULL)
+void NearestNeighbour<T>::Interpolate(std::vector<Item>* dp, const unsigned int* const bands,DataAccessor<T>* lev1data)
 {
    //Get the first point in the vector - this assumes vector has been sorted by distance
    unsigned int line=(*dp)[0].igmrow;
@@ -244,7 +244,7 @@ std::vector<Item>* NearestNeighbour<T>::UpdatePoints(unsigned int band,DataAcces
 // Function to apply inverse distance weighted interpolation
 //----------------------------------------------------------------------
 template <class T>
-void IDW<T>::Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data=NULL)
+void IDW<T>::Interpolate(std::vector<Item>* dp,const unsigned int* const bands,DataAccessor<T>* lev1data)
 {
    //Clean data array
    for(unsigned int b=0;b<this->length;b++)
@@ -871,7 +871,7 @@ inline void Bilinear<T>::GetUV(const double* const xpos,const double* const ypos
 //   to fix the bilinear algorithm
 //----------------------------------------------------------------------
 template <class T>
-void Bilinear<T>::FallBack(const unsigned int line,const unsigned int column,const unsigned int* const bands,DataAccessor<T>* lev1data=NULL)
+void Bilinear<T>::FallBack(const unsigned int line,const unsigned int column,const unsigned int* const bands,DataAccessor<T>* lev1data)
 {
    //Now check if the data exists in RAM or if we need to read it from disk
    for(unsigned int b=0;b<this->length;b++)
@@ -1344,7 +1344,7 @@ void Cubic<T>::OrderPoints(std::vector<Item>*dp,std::vector<Item> &ordered)
 // Function to handle the cubic interpolation 
 //-------------------------------------------------------------------------
 template<class T>
-void Cubic<T>::Interpolate(std::vector<Item>* dp, const unsigned int* const bands,DataAccessor<T>* lev1data=NULL)
+void Cubic<T>::Interpolate(std::vector<Item>* dp, const unsigned int* const bands,DataAccessor<T>* lev1data)
 {
    double finterppts[4]={0};
    double yinterppts[4]={0};

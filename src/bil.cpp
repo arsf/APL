@@ -59,7 +59,7 @@ BILReader::BILReader(std::string fname)
       {
          this->CannotFind("interleave");
       }
-      if( it->second != "bil")
+      if( ToLowerCase(it->second) != "bil")
       {
          brinfo<<"Header file states file "<<this->filename<<" is not a bil file but a "<<it->second<<std::endl;
          throw BRexception(brinfo.str()); //Throw an exception

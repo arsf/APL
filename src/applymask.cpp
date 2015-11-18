@@ -53,7 +53,7 @@ const std::string optsdescription[number_of_possible_options]={
 "Mask data file relating to level 1 image (this currently must be an 8-bit char file).",
 "The filename of the masked (output) level-1 BIL file.",
 "List of space separated flag values to use as mask. Select from: 1 2 4 8 16 32 64. Default is to mask all types.",
-"Only mask bad CCD pixels (i.e. with value 4 in mask file) detected by certain methods. Select from: A=1 B=2 C=4 D=8 E=16",
+"Only mask bad CCD pixels (i.e. with value 4 in mask file) detected by certain methods. Select from: A=1 B=2 C=4 D=8 E=16 F=32",
 "Display this help."
 };
 
@@ -414,6 +414,9 @@ int main (int argc, char* argv[])
                   break;
                case 'E':
                   (*it)=static_cast<unsigned char>(16);//00010000
+                  break;
+               case 'F':
+                  (*it)=static_cast<unsigned char>(32);//00100000
                   break;
                default:
                   throw "Unknown mask bad CCD detection method value. Please review the -onlymaskmethods option.";

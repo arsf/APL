@@ -589,7 +589,23 @@ void NMEASpecimNavData::Reader()
                //Test if object is bad - most likely because it is incomplete
                if(gpgga->Bad()==false)
                {
-                  navcollection->SetValues(record,NavDataCollection::TIME,gpgga->secofday+this->dayofweeksecs);
+                  //Nasty piece of code to deal with when date change message appears after the time message at 00:00:00 within the nav file
+                  if((gpgga->secofday==0)&&(record!=0))
+                  {
+                     //If the previous record time value is the same as this second + the day of week + another day - 1 second
+                     if(navcollection->GetValue(record-1,NavDataCollection::TIME)==gpgga->secofday+this->dayofweeksecs+3600*24-1)
+                     {
+                        //Then the dayofweeksecs has not yet been updated by the GPZDA message
+                        //Add on an extra day of seconds here manually
+                        navcollection->SetValues(record,NavDataCollection::TIME,gpgga->secofday+this->dayofweeksecs+3600*24);
+                     }
+                  }
+                  else
+                  {
+                     //Normal operation for when the secofday is not 0
+                     navcollection->SetValues(record,NavDataCollection::TIME,gpgga->secofday+this->dayofweeksecs);
+                  }
+
                   navcollection->SetValues(record,NavDataCollection::LAT,gpgga->lat);
                   navcollection->SetValues(record,NavDataCollection::LON,gpgga->lon);   
                   navcollection->SetValues(record,NavDataCollection::HEI,gpgga->alt);

@@ -72,9 +72,10 @@ size_t GetNumberOfItemsFromString(std::string str,std::string delim);
 //Function to convert a Time string HH mm ss.ss into a double second of day
 double ConvertTime(std::string timestr);
 //Function to convert date string "dd-mm-yyyy" to day of week 
-int GetDayOfWeek(std::string datestr);
+int GetDayOfWeek(std::string datestr,std::string format="dd-mm-yyyy");
 //Function to get the GPS second of day from a date and time string
-double GetSecOfWeek(std::string datestr,std::string timestr);
+double GetSecOfWeek(std::string datestr,std::string timestr,std::string dateformat);
+std::string pad(std::string str,char p,size_t len,bool atend=false);
 
 //Function to check for file exist and readabilty
 bool DoesPathExist(std::string filename);
@@ -87,7 +88,8 @@ std::string GetWritableFilePath(std::string p);
 
 std::string AbsolutePath(std::string relpath);
 
-void FillTimeStruct(tm* this_time,std::string datestr);
+void FillTimeStruct(tm* this_time,std::string datestr,std::string format="");
+void DesconstructDateString(std::string datestr,std::string format,int* date);
 
 unsigned int PercentProgress(unsigned int line,unsigned int nlines,bool quiet=false);
 std::string CheckNumbersOnly(std::string str,bool NEGATIVE=true);

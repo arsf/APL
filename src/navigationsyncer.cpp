@@ -21,19 +21,13 @@
 // Function to return the leap seconds for the given date
 // Date should be in format dd-mm-yyyy
 //-------------------------------------------------------------------------
-int LeapSecond::GetLeapSeconds(std::string mydate)
+int LeapSecond::GetLeapSeconds(std::string mydate,std::string format)
 {
-   //Check date format
-   if(!CheckDateFormat(mydate))
-   {
-      throw "Acquisition date in unexpected format. Require 'dd-mm-yyyy' but received:"+mydate;
-   }
-
    //Set up 2 empty time structs
    struct tm mytime={0};
    struct tm testday={0};
    //Fill in the time struct for the date of the data
-   FillTimeStruct(&mytime,mydate);
+   FillTimeStruct(&mytime,mydate,format);
    //Now get the seconds since epoch for data collection time (to the nearest day)
    time_t collectiontime = mktime(&mytime);
    //Check while myday is greater than date
@@ -42,10 +36,9 @@ int LeapSecond::GetLeapSeconds(std::string mydate)
    for(it=data.begin();it!=data.end();it++)
    {
       DEBUGPRINT("Leap second data value "<<(*it).first<<" "<<(*it).second)  
-      FillTimeStruct(&testday,(*it).first);
+      FillTimeStruct(&testday,(*it).first,"dd-mm-yyyy");
       //get the seconds since epoch for leap second increase day
       time_t leaptime=mktime(&testday);
-
       //Test date is not before start of data 
       if((it==data.begin())&&(collectiontime < leaptime))
          throw "Given date is before the first date in leap second class, received:"+mydate+" and first date is:"+(*it).first;
@@ -61,26 +54,6 @@ int LeapSecond::GetLeapSeconds(std::string mydate)
    return (*(--it)).second;
 }
 
-//-------------------------------------------------------------------------
-// Function to check the format of the date string matches the dd-mm-yyyy format
-//-------------------------------------------------------------------------
-bool LeapSecond::CheckDateFormat(std::string testdate)
-{
-   std::string nicechars="0123456789-";
-   //Test if any chars not of nicechars in date string
-   if(testdate.find_first_not_of(nicechars)!=std::string::npos)
-      return false;
-
-   //Test there are only 2 -'s
-   if(TotalOccurence(testdate,'-')!=2)
-      return false;   
-
-   //Test if - are in correct place   
-   if((testdate.find_first_of('-')!=2)&&(testdate.find_last_of('-')!=5))
-      return false;
-
-   return true;
-}
 
 //-------------------------------------------------------------------------
 // NavigationSyncer constructor using nav file and lev1 file to set up
@@ -132,6 +105,12 @@ NavigationSyncer::NavigationSyncer(std::string navfilename, std::string lev1file
    acquisitiondate=bilin.FromHeader("acquisition date");
    //Remove the start of the date string 
    acquisitiondate=TrimWhitespace(acquisitiondate.substr(acquisitiondate.find_first_of(':')+1));
+   //Get the date format string for leap seconds
+   dateformat=bilin.FromHeader("acquisition date");
+   size_t startofdateformat=dateformat.find_first_of("DATE(")+5;
+   size_t lengthofdateformat=dateformat.find_first_of("):")-startofdateformat;
+   dateformat=dateformat.substr(startofdateformat,lengthofdateformat);
+
    DEBUGPRINT("Date: "<<acquisitiondate)
    //Get the start and stop times from the header to use in case no sync messages 
    //found in the specim nav file
@@ -185,7 +164,7 @@ NavigationSyncer::NavigationSyncer(std::string navfilename, std::string lev1file
 
    //Get the number of leap seconds for the data
    LeapSecond leap;
-   leapseconds=leap.GetLeapSeconds(acquisitiondate);
+   leapseconds=leap.GetLeapSeconds(acquisitiondate,dateformat);
    DEBUGPRINT("Using leap seconds of:"<<leapseconds);
 }
 
@@ -225,8 +204,15 @@ void NavigationSyncer::FindScanTimes()
 
       //We need to test which of the sync messages is for this file - can look at GPS time of sync message
       //and select the one that is closest to the header start time
-      double lev1starttime=GetSecOfWeek(acquisitiondate,ReplaceAllWith(&gpsstarttime,':',' ')); 
+      double lev1starttime=GetSecOfWeek(acquisitiondate,ReplaceAllWith(&gpsstarttime,':',' '),dateformat); 
       int mindiff=std::numeric_limits<int>::max();
+
+      //
+      if(navfile->GetNumSyncs()==0)
+      {
+         throw "No sync messages found in Specim nav file.";
+      }
+
       //Need to loop through all syncs to find the one closest to start time
       for(unsigned int vecindex=0;vecindex<navfile->GetNumSyncs();vecindex++)
       {
@@ -258,7 +244,7 @@ void NavigationSyncer::FindScanTimes()
          {
             //This is to be expected (more than 1 sync in file)
             //Should be closer to start time than lev1firstscanmaxexpectedsize though?
-            Logger::Warning("1 Sync message found but greater than 'maximum expected size' of "+ToString(lev1firstscanmaxexpectedsize)+" seconds away from level1 start time.");
+            Logger::Warning("Sync message found (per second) but greater than 'maximum expected size' of "+ToString(lev1firstscanmaxexpectedsize)+" seconds away from level1 start time.");
          }
          else 
          {
@@ -352,7 +338,7 @@ void NavigationSyncer::FindScanTimes()
       double firstscantime=0;
 
       //Use the start time from the header file as the first scan time
-      firstscantime=GetSecOfWeek(acquisitiondate,ReplaceAllWith(&gpsstarttime,':',' '));
+      firstscantime=GetSecOfWeek(acquisitiondate,ReplaceAllWith(&gpsstarttime,':',' '),dateformat);
       Logger::Log("Using a first scan time of "+ToString(firstscantime));
 
       //Add on the cropped start time offset - this is 0 if no cropping (at the start of the line) has taken place
@@ -386,7 +372,7 @@ void NavigationSyncer::CompareLev1ToNavTimes(double first_scan_time)
 {
    const int numsecsperday=3600*24;
    //Get the level 1 start time in GPS sec of week
-   double lev1starttime=GetSecOfWeek(acquisitiondate,ReplaceAllWith(&gpsstarttime,':',' ')); 
+   double lev1starttime=GetSecOfWeek(acquisitiondate,ReplaceAllWith(&gpsstarttime,':',' '),dateformat); 
    DEBUGPRINT("GPS Second of week for level1 start time: "<<lev1starttime)
 
    Logger::Log("Difference between start time from level-1 header file and start time from navigation: "+ToString(lev1starttime-first_scan_time)+" seconds.");

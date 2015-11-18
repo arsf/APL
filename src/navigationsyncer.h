@@ -38,13 +38,13 @@ public:
       data["01-01-2006"]=14;
       data["01-01-2009"]=15;
       data["01-07-2012"]=16;
+      data["01-07-2015"]=17;
    };
 
-   int GetLeapSeconds(std::string mydate);
+   int GetLeapSeconds(std::string mydate,std::string format);
 
 private:
    std::map<std::string,int> data;
-   bool CheckDateFormat(std::string testdate);
 };
 
 
@@ -86,6 +86,7 @@ private:
    double croptimeoffset; //time offset to apply if level 1 data has been cropped
 
    std::string acquisitiondate; //string of the acquisition date from the hdr
+   std::string dateformat; //string to hold the date format
    std::string gpsstarttime; //Strings of the start and stop times from the hdr
    std::string gpsstoptime;
 

@@ -89,7 +89,7 @@ private:
    FileWriter* writer;
    Interpolator<T>* interpolator;
 
-   void FillPixel(long int row, long int col, std::vector<Item>* points,DataAccessor<T>* lev1data);
+   void FillPixel(long int row, long int col, std::vector<Item>* points,DataAccessor<T>* lev1data=NULL);
    unsigned long WriteBuffer();
    void WriteBuffer(int* bounds,Level3GridInfo* segment,int row);
    void TransformDataType(unsigned int datatype,unsigned long int start,unsigned long int end);
@@ -406,7 +406,7 @@ void Map<T>::UpdateL1MappingHeader()
 // Function to add an interpolated value to the map buffer
 //----------------------------------------------------------------------
 template<class T>
-void Map<T>::FillPixel(long int row, long int col, std::vector<Item>* points,DataAccessor<T>* lev1data=NULL)
+void Map<T>::FillPixel(long int row, long int col, std::vector<Item>* points,DataAccessor<T>* lev1data)
 {
    if((row)!=0)
       throw "Row should be NULL until a multiple row buffer writing method is implemented";

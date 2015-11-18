@@ -24,7 +24,7 @@ template <class T>
 class LineSegment
 {
 public:
-   LineSegment(unsigned int fr,unsigned int er,unsigned int ob,double psx,double psy,std::string bandlist,std::string igmfilename,std::string level1filename,const Area* const region);
+   LineSegment(unsigned int fr,unsigned int er,unsigned int ob,double psx,double psy,std::string bandlist,std::string igmfilename,std::string level1filename,const Area* const region=NULL);
    ~LineSegment();
 
    Level3GridInfo* segmentinfo;
@@ -42,7 +42,7 @@ private:
 
 
 template <class T>
-LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap_lines,double psx,double psy,std::string bandlist,std::string igmfilename,std::string level1filename,const Area* const region=NULL)
+LineSegment<T>::LineSegment(unsigned int fr,unsigned int er,unsigned int overlap_lines,double psx,double psy,std::string bandlist,std::string igmfilename,std::string level1filename,const Area* const region)
 {
    //May as well set all to NULL although shouldn't matter.
    segmentinfo=NULL;

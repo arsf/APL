@@ -58,11 +58,11 @@ BinaryReader::BinaryReader(std::string fname)//constructor with filename - only 
       {
          this->CannotFind("interleave");
       }
-      if(it->second == "bsq")
+      if(ToLowerCase(it->second) == "bsq")
       {
          FILESTYLE=BSQ;
       }
-      else if(it->second == "bil")
+      else if(ToLowerCase(it->second) == "bil")
       {
          FILESTYLE=BIL;
       }
@@ -112,9 +112,6 @@ int BinaryReader::ReadHeader()
    //DEBUG statement
    DEBUGPRINT("Reading BIL Header file...");
    //Open the header file 
-   //It is expected to be the same as filename(-'raw' + 'hdr')
-   //std::string hdrfile=this->filename;
-   //hdrfile.replace(this->filename.length() - 3, 3, "hdr");
    std::string hdrfile;
    //Now try and open the file
    std::ifstream hdrin;
@@ -128,10 +125,7 @@ int BinaryReader::ReadHeader()
       if(!hdrin.is_open())
       {
          failcount++;
-         //An error has occured
-         //brinfo<<"An error has occurred opening the hdr file: "<<this->hdrfilename<<std::endl;
          continue;
-         //return -1;
       }
       else
          break;
@@ -155,7 +149,6 @@ int BinaryReader::ReadHeader()
       {
          //get a line from the hdr file 
          std::getline(hdrin,strbuffer);
-         //std::cout<<strbuffer<<std::endl;
          //search for an equals
          if(strbuffer.find('=') != std::string::npos)
          {
@@ -204,11 +197,16 @@ int BinaryReader::ReadHeader()
             if(strbuffer.find('}')==strbuffer.length()-1)
             {
                //At the end - get everything upto there as values - comma separates values
-               strbuffer=ReplaceAllWith(&strbuffer,',',';');
-               strval=strval+";"+strbuffer; // add the string to the value string using ; as delimiter 
+               strval=strval+","+strbuffer; // add the string to the value string using , as delimiter 
+               //add a comma after the first { so that the first value is recognised in FromHeader function
+               strval.insert(strval.find('{')+1,",");
+               //remove cases of multiple commas to single comma
+               strval=ReplaceAllWith(&strval,",,",",");
+               //replace commas to semi-colon 
+               strval=ReplaceAllWith(&strval,',',';');
                this->Header[ToLowerCase(strkey)]=strval; //add to the header map
                multilineval=false; //reset the bool
-               strval.clear();     
+               strval.clear();
             }
             else
             {
@@ -221,16 +219,14 @@ int BinaryReader::ReadHeader()
          {
             strbuffer=TrimWhitespace(strbuffer);
             //No = in this string
-            if(multilineval==false)//For the moment will just pass this as the key AND value into the map            
-            {   
+            if(multilineval==false)//For the moment will just pass this as the key AND value into the map
+            {
                this->Header[strbuffer]=strbuffer;
             }
             else if(!strbuffer.empty())
-            {   
-               // 14/02/2011 TrimPunctuation and then remove commas and replace with ';' - this could be dangerous
+            {
                strbuffer=TrimPunctuation(strbuffer);
-               strbuffer=ReplaceAllWith(&strbuffer,',',';');
-               strval=strval+";"+strbuffer; // add the string to the value string using ; as delimiter
+               strval=strval+","+strbuffer; // add the string to the value string using , as delimiter
             }
          }
       }

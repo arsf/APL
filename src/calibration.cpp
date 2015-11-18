@@ -387,7 +387,7 @@ unsigned int Calibration::GetBinningRatio(std::string bintype)
       if(data==sensordata[0])
          calbinning=StringToUINT(TrimWhitespace(calfile.FromHeader("binning",1).c_str()));
       else if(data==sensordata[1])
-         calbinning=StringToUINT(TrimWhitespace(calfile.FromHeader("binning2",0).c_str()));
+         calbinning=StringToUINT(TrimWhitespace(calfile.FromHeader("binning2",1).c_str()));
       //Instead of just using the raw data binning values - we use a ratio of raw/cal
       calratio=(float)sensor->SpatialBinning() / calbinning;
    }
@@ -495,7 +495,7 @@ void Calibration::CheckCalWavelengths(float* const wl_cal, const unsigned int nu
    //Numagree should be the same as the number of bands in the raw file if the correct calibration file is used.
    if(numagree != sensor->NumBands())
    {
-      throw "A number of bands in the raw file disagree with the calibration file wavelengths. Number that agree: "+ToString(numagree)
+      throw "A number of bands in the raw file disagree with the calibration file wavelengths. Number that agree: "+ToString(numagree)+" Number of bands: "+ToString(sensor->NumBands())
                +"\nThis probably means that the calibration file and raw file are not compatible. Maybe the wrong bandset / config file has been used at data collection.";
    }
    else
@@ -799,9 +799,23 @@ void Calibration::ReadBinAndTrimGains(double* const trimmedcal)
             }
          }
 
-         //Divide by spectralbin ^ 2 since the actual binned raw data is the sum of the binned bands not the mean of the binned bands.
-         //Similarly for spatial binning too.
-         binnedgains[binned_index]=binnedgains[binned_index] / ( (specbinratio * specbinratio) * (spatbinratio * spatbinratio) );
+         if(CheckSensorID(FENIX,this->sensor->SensorID()))
+         {
+            //Fenix handles binning differently to Eagle + hawk
+            //SPECTRAL is averaged - only divide by 1 factor of specbinratio (for the binned gains)
+            //SPATIAL is summed - divide by 2 factors of specbinratio (1 for the binned gains and 1 for the binned raw data)
+            binnedgains[binned_index]=binnedgains[binned_index] / ( (specbinratio * spatbinratio * spatbinratio) );
+         }
+         else if((CheckSensorID(EAGLE,this->sensor->SensorID()))||(CheckSensorID(EAGLE,this->sensor->SensorID())))
+         {
+            //Divide by spectralbin ^ 2 since the actual binned raw data is the sum of the binned bands not the mean of the binned bands.
+            //Similarly for spatial binning too. i.e. both SPETCRAL and SPATIAL are summed.
+            binnedgains[binned_index]=binnedgains[binned_index] / ( (specbinratio*specbinratio) * (spatbinratio*spatbinratio) );
+         }
+         else
+         {
+            throw std::string("Unrecognised sensor in calibration gains binning. Sensor id: ")+ToString(this->sensor->SensorID());
+         }
 
          samplecount++;//increase onto next sample of array
       }
@@ -1377,7 +1391,7 @@ void BadPixels::DecodeARSFBadPixels(std::map<int,int> revbandmap)
        throw std::string("An error occurred decoding bad pixel file ... cannot get number of headerlines: ")+tempstr;          
    }  
 
-   int method_counter=0;
+   unsigned int method_counter=0;
    //We have already read 1 line so read nheaderlines - 1 more
    // and test if they are method descriptors
    for(int i=0;i<nheaderlines-1;i++)
@@ -1391,6 +1405,7 @@ void BadPixels::DecodeARSFBadPixels(std::map<int,int> revbandmap)
 
    //We have found method_counter number of descriptors
    Logger::Log("Will create method descriptors: "+ToString(method_counter));
+   num_method_descriptors=method_counter;
    bpmethod_descriptor=new std::string[method_counter];   
 
    //read in the first id
@@ -1430,7 +1445,7 @@ void BadPixels::DecodeARSFBadPixels(std::map<int,int> revbandmap)
    badpixelstream.seekg(0,std::ios::beg);
    //We need to skip nheaderlines 
    //Actually - we want to read in and store the method descriptors to output later
-   int meth=0;
+   unsigned int meth=0;
    for(int i=0;i<nheaderlines;i++)
    {
       std::getline(badpixelstream,tempstr);
@@ -1517,8 +1532,12 @@ void BadPixels::DecodeARSFBadPixels(std::map<int,int> revbandmap)
             if((badpixelmethod[id]&E) == 0)
                badpixelmethod[id]+=E;
             break;
+         case 'F':
+            if((badpixelmethod[id]&F) == 0)
+               badpixelmethod[id]+=F;
+            break;
          default:
-            throw std::string("Unrecognised bad pixel detection method in bad pixel file. Expected one of A,B,C,D,E but got: ")+method;
+            throw std::string("Unrecognised bad pixel detection method in bad pixel file. Expected one of A,B,C,D,E,F but got: ")+method;
          }
       }
 

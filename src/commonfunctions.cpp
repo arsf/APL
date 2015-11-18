@@ -354,10 +354,10 @@ double ConvertTime(std::string timestr)
 // Convert a date and time into GPS seconds of week
 // date format "dd-mm-yyyy" time format "hh mm ss.ssss"
 //-------------------------------------------------------------------------
-double GetSecOfWeek(std::string datestr,std::string timestr)
+double GetSecOfWeek(std::string datestr,std::string timestr,std::string dateformat)
 {
    //First get the day of the week
-   int dayofweek=GetDayOfWeek(datestr);
+   int dayofweek=GetDayOfWeek(datestr,dateformat);
    //std::cout<<"Day of week: "<<datestr<<" "<<dayofweek<<std::endl;
 
    if((dayofweek<0)||(dayofweek>6))
@@ -374,13 +374,13 @@ double GetSecOfWeek(std::string datestr,std::string timestr)
 // Return a numeric value for day of week (0-sunday, 6-saturday)
 //-------------------------------------------------------------------------
 //Datestr of format "dd-mm-yyyy"
-int GetDayOfWeek(std::string datestr)
+int GetDayOfWeek(std::string datestr,std::string format)
 {
    //Create a time struct
    struct tm mytime={0};
 
    //Fill the time struct with the date
-   FillTimeStruct(&mytime,datestr);
+   FillTimeStruct(&mytime,datestr,format);
 
    //Create a time_t object - fills in the week day in the mytime tm struct
    //dont actually bother getting the time_t object, just run mktime
@@ -393,19 +393,67 @@ int GetDayOfWeek(std::string datestr)
 //-------------------------------------------------------------------------
 // Fill in the time struct with the given date string
 //-------------------------------------------------------------------------
-void FillTimeStruct(tm* this_time,std::string datestr)
+void FillTimeStruct(tm* this_time,std::string datestr,std::string format)
 {
-   //Deconstruct the date string
-   std::string daystr=datestr.substr(0,datestr.find_first_of('-'));
-   std::string monthstr=datestr.substr(datestr.find_first_of('-')+1,datestr.find_last_of('-')-datestr.find_first_of('-')-1);
-   std::string yearstr=datestr.substr(datestr.find_last_of('-')+1);   
+   //Use the given format to deconstruct the datestr into year month day components
+   //If no format given then we default to 'dd-mm-yyyy'
+   if(format.compare("")==0)
+   {
+      format="dd-mm-yyyy";
+   }
+
+   int date[3]={0};
+   DesconstructDateString(datestr,format,date);
 
    //Fill in the day/month/year
-   this_time->tm_mday=StringToINT(daystr); //1-31
-   this_time->tm_mon=StringToINT(monthstr)-1; //0-11
-   this_time->tm_year=StringToINT(yearstr)-1900;//years since 1900
+   this_time->tm_mday=date[0]; 
+   this_time->tm_mon=date[1];
+   this_time->tm_year=date[2];
 }
 
+//-------------------------------------------------------------------------
+// convert datestr into integer components based on format string
+//-------------------------------------------------------------------------
+void DesconstructDateString(std::string datestr,std::string format,int* date)
+{
+   //Convert format string to lower case
+   format=ToLowerCase(format);
+   //Split into substrings based on the d's, m's and y's in format string.
+   std::string daystr=datestr.substr(format.find_first_of('d'),format.find_last_of('d')-format.find_first_of('d')+1);
+   std::string monthstr=datestr.substr(format.find_first_of('m'),format.find_last_of('m')-format.find_first_of('m')+1);
+   std::string yearstr=datestr.substr(format.find_first_of('y'),format.find_last_of('y')-format.find_first_of('y')+1);
+
+   date[0]=StringToINT(daystr);//1-31
+   date[1]=StringToINT(monthstr)-1;//0-11
+   date[2]=StringToINT(yearstr)-1900;//years since 1900
+}
+
+//-------------------------------------------------------------------------
+// Function to pad a string with a given char such that padded string has
+// length len. If atend = true then it pads at the end of the string, 
+// else at the front
+//-------------------------------------------------------------------------
+std::string pad(std::string str,char p,size_t len,bool atend)
+{
+   //No need to pad if already at required length
+   if(str.length() >= len)
+      return str;
+
+   //Create a string of the pad character with length len
+   std::string toadd(len-str.length(),p);
+   std::string padded="";
+   //Add to the string str at front or back
+   if(atend==true)
+   {
+      padded=str+toadd;
+   }
+   else
+   {
+      padded=toadd+str;
+   }
+
+   return padded;
+}
 
 size_t GetNumberOfItemsFromString(std::string str,std::string delim)
 {
