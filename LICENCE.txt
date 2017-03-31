@@ -4,6 +4,8 @@ This License (the "License") applies to any original work of authorship (the "Or
 
 Licensed under the APL Open Software License version 1.0
 
+This is based on the Open Software License, but includes a clause (16) limiting commerical use 
+
 1) Grant of Copyright License. Licensor grants You a worldwide, royalty-free, non-exclusive, sublicensable license, for the duration of the copyright, to do the following:
 
 a) to reproduce the Original Work in copies, either alone or as part of a collective work;
